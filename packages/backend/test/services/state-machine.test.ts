@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { users } from '../../src/db/schema/users.js';
+import { workflowSteps } from '../../src/db/schema/workflows.js';
 import { workspaces } from '../../src/db/schema/workspaces.js';
 
 describe('Schema shapes', () => {
@@ -12,5 +13,9 @@ describe('Schema shapes', () => {
 
   it('workspaces table has slug column', () => {
     expect(workspaces.slug).toBeDefined();
+  });
+
+  it('workflowSteps has status enum column', () => {
+    expect(workflowSteps.status).toBeDefined();
   });
 });
