@@ -8,6 +8,7 @@ import { artifactRoutes } from './routes/artifacts.js';
 import { authRoutes } from './routes/auth.js';
 import { decisionRoutes } from './routes/decisions.js';
 import { runRoutes } from './routes/runs.js';
+import { runnerRoutes } from './routes/runners.js';
 import { workspaceRoutes } from './routes/workspaces.js';
 
 export async function buildApp() {
@@ -25,6 +26,7 @@ export async function buildApp() {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(decisionRoutes, { prefix: '/api/v1' });
   await app.register(runRoutes, { prefix: '/api/v1/workspaces' });
+  await app.register(runnerRoutes, { prefix: '/api/v1/runners' });
   await app.register(workspaceRoutes, { prefix: '/api/v1/workspaces' });
 
   return app;

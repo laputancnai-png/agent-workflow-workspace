@@ -19,6 +19,7 @@
     "@fastify/jwt": "^9.0.0",
     "@fastify/oauth2": "^8.0.0",
     "@paralleldrive/cuid2": "^3.3.0",
+    "bcrypt": "^6.0.0",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.2",
     "fast-jwt": "^6.2.2",
@@ -28,6 +29,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^20.0.0",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.11.0",
