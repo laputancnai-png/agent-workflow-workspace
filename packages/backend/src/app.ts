@@ -4,6 +4,7 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 
+import { artifactRoutes } from './routes/artifacts.js';
 import { authRoutes } from './routes/auth.js';
 import { decisionRoutes } from './routes/decisions.js';
 import { runRoutes } from './routes/runs.js';
@@ -20,6 +21,7 @@ export async function buildApp() {
   });
   await app.register(cookie);
 
+  await app.register(artifactRoutes, { prefix: '/api/v1/artifacts' });
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(decisionRoutes, { prefix: '/api/v1' });
   await app.register(runRoutes, { prefix: '/api/v1/workspaces' });
