@@ -31,4 +31,13 @@ describe('Runner registration', () => {
 
     expect(res.statusCode).toBe(400);
   });
+
+  it('GET /workspaces/:id/events returns 401 without auth', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/workspaces/fake/events',
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
 });
