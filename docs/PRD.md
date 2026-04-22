@@ -606,7 +606,296 @@ Approval controls:
 - Add approval history.
 - Export PR summary to GitHub.
 
-## 20. Positioning
+## 20. Execution Environment Architecture
+
+### Decision: Local Runner Model
+
+AWW uses the **Local Runner model**. The AWW Cloud service handles the web UI, workflow scheduling, and artifact storage. Agent execution happens on user-controlled infrastructure via a lightweight runner process. Raw source code files never transit through or are stored on AWW Cloud servers.
+
+This choice satisfies three constraints simultaneously:
+1. Enables "basic shell command execution" (tests, lint, typecheck) without a cloud sandbox.
+2. Satisfies the NFR "sensitive repo data should not be exposed outside configured model/tool boundaries."
+3. Passes enterprise security reviews that prohibit code upload to third-party services.
+
+### System Components
+
+**AWW Cloud Service**
+- Serves the web UI
+- Stores workspace state, workflow runs, steps, artifacts, decisions, and audit logs
+- Schedules AgentRun jobs (polling-based in MVP)
+- Exposes REST API consumed by the runner and browser
+- Never stores raw source code file contents
+
+**AWW Local Runner**
+- Lightweight daemon installed by the user (`npm install -g @aww/runner` or binary download)
+- Registers with AWW Cloud using a one-time Runner Token
+- Polls AWW Cloud every 5 seconds for pending AgentRun jobs assigned to this runner
+- Executes agent steps: clones/checks out the repo, calls the LLM API directly, runs shell commands, writes files
+- Reports AgentRun status, changed files, command logs, and artifact content back to AWW Cloud
+- Sends heartbeat to AWW Cloud every 30 seconds; a missed heartbeat for 120 seconds marks the runner as offline
+
+### Runner Registration
+
+1. User opens AWW Settings → Runners → "Add Runner" → copies runner token
+2. On local machine: `aww-runner register --url https://app.aww.dev --token <runner-token>`
+3. Runner appears as "Online" in Workspace Settings within 10 seconds
+4. MVP: one runner per workspace. Post-MVP: multiple runners for parallelism.
+
+### Data Flow
+
+```
+[Browser] <—REST API—> [AWW Cloud]
+                             ↕ (job queue + artifact upload)
+                       [AWW Runner] (local machine)
+                             ↕ (git clone/push, file R/W)
+                       [Git Repo] (local or remote)
+                             ↕ (direct LLM API calls)
+                       [LLM Provider] (OpenAI / Anthropic)
+```
+
+Raw code files flow: local repo → runner memory → LLM prompt → never persisted on AWW Cloud.
+
+### MVP Constraints
+
+- Runner must be online for any agent step to execute; human steps do not require runner.
+- Runner must have `git` installed and credentials to clone and push to the configured repository.
+- Runner must have outbound network access to the LLM provider endpoint and AWW Cloud API.
+- One runner handles one AgentRun at a time in MVP (no intra-runner parallelism).
+
+---
+
+## 21. Security and Credential Model
+
+### Credential Ownership Table
+
+| Credential | Stored By | Used By | AWW Cloud Holds It? |
+|-----------|-----------|---------|-------------------|
+| GitHub OAuth Token | AWW Cloud (AES-256 encrypted) | AWW Cloud (PR creation API) | Yes, encrypted |
+| LLM API Key | Runner local config file | Runner (direct API calls) | No |
+| Runner Token | AWW Cloud (hashed) + local config | Runner registration | Hash only |
+| Git credentials | Runner local config | Runner (git clone/push) | No |
+
+### LLM API Key
+
+The runner calls the LLM provider API directly from the user's machine using the key stored in `~/.aww/runner.config` (permissions: 600). AWW Cloud never proxies, transmits, or stores LLM API keys.
+
+### GitHub OAuth Token
+
+GitHub OAuth uses the server-side authorization code flow. The resulting access token is encrypted with AES-256-GCM and stored in the AWW Cloud database. It is used server-side exclusively for reading repository metadata and creating pull requests. The token is never sent to the browser or to the runner in plaintext.
+
+### Code File Privacy
+
+AWW Cloud stores only structured artifact content (plan text, task descriptions, review summaries, PR descriptions), changed file paths, git commit SHAs, and code diff text (when the Review Agent produces a diff artifact). AWW Cloud does not store raw source code files, full repository contents, or LLM prompt payloads.
+
+### Command Log Sanitization
+
+Before uploading `command_logs` from a runner to AWW Cloud, the runner redacts strings matching known secret patterns (API key formats, token formats defined in a configurable redaction list). Redacted values are replaced with `[REDACTED]`.
+
+### Agent Execution Isolation
+
+**MVP:** Each AgentRun is a subprocess of the runner process, inheriting the runner's filesystem permissions. Users are responsible for scoping the runner's environment to the repository only.
+
+**Post-MVP target:** Docker container isolation per AgentRun with network policy restricting outbound to `git remote` and `AWW Cloud API` only.
+
+---
+
+## 22. Git Workspace Strategy
+
+### Branch Model
+
+Each WorkflowRun creates and owns exactly one feature branch.
+
+**Naming:** `aww/{workspace-slug}/{run-id-short}`
+Example: `aww/shopflow-web/a1b2c3`
+
+### Branch Lifecycle
+
+1. **WorkflowRun created** → Runner creates feature branch from `Workspace.default_branch` HEAD. Records `WorkflowRun.base_commit_sha`.
+2. **Coding Agent steps** → Each AgentRun commits to the feature branch sequentially (MVP: no parallel coding agents within one run).
+3. **Review Agent step** → Diffs `feature_branch` vs `Workspace.default_branch`.
+4. **Human final approval** → AWW Cloud calls GitHub REST API to create a PR (`feature_branch` → `default_branch`). AWW does not merge or delete the branch.
+5. **Post-merge cleanup** → Managed by the team outside AWW.
+
+### Commit Convention
+
+Each AgentRun writes commits with the following message format:
+
+```
+aww({agent_role}): {step_name}
+
+AgentRun-Id: {agent_run_id}
+WorkflowRun-Id: {workflow_run_id}
+```
+
+This makes AWW-generated commits identifiable in `git log`.
+
+### Multi-Agent Serialization
+
+In MVP, at most one Coding Agent step runs at a time per WorkflowRun. The AWW scheduler enforces this by only marking a step `running` when no other step in the same WorkflowRun has `status = running`.
+
+### Take Over Commit Detection
+
+When a human takes over a step, AWW detects completion by:
+1. Polling the feature branch HEAD every 60 seconds for new commits authored after the Take Over was triggered, OR
+2. Receiving a GitHub Webhook push event for the feature branch (preferred; requires Webhook setup in Workspace Settings).
+
+When new commits are detected, AWW marks the Take Over step as `completed` and creates a human-authored Artifact from the commit diff.
+
+---
+
+## 23. WorkflowStep State Machine
+
+### States
+
+| State | Meaning |
+|-------|---------|
+| `pending` | Step is defined but prerequisites not yet met |
+| `running` | An AgentRun is actively executing (or human step is in progress) |
+| `completed` | Step produced all required output artifacts and passed any approval gate |
+| `failed` | AgentRun failed; retry limit not yet reached |
+| `timed_out` | AgentRun did not complete within `timeout_seconds` and was killed by Watchdog |
+| `retrying` | Retry is scheduled; waiting for backoff period |
+| `cancelled` | Step was explicitly cancelled by a human decision |
+| `human_owned` | Human took over an agent step; waiting for human to complete and push |
+
+### State Transitions
+
+```
+pending
+  → running       [scheduler: all depends_on_step_ids completed AND no other step in run is running]
+
+running
+  → completed     [AgentRun status=completed AND approval not required]
+  → completed     [AgentRun status=completed AND approval_required AND Decision.action=approve]
+  → failed        [AgentRun status=failed]
+  → timed_out     [Watchdog: last_heartbeat_at > now - 120s]
+  → human_owned   [Decision.action=take_over]
+  → cancelled     [Decision.action=reject]
+  → running       [Decision.action=request_changes → target step rewound → new AgentRun]
+
+failed / timed_out
+  → retrying      [retry_count < max_retries]
+  → cancelled     [retry_count >= max_retries → human must intervene]
+
+retrying
+  → running       [backoff period elapsed; new AgentRun created]
+
+human_owned
+  → completed     [new commit on feature_branch detected after take_over timestamp]
+```
+
+### Watchdog
+
+Runs every 60 seconds. For each AgentRun with `status = running` and `last_heartbeat_at < now - 120s`:
+1. Sets `AgentRun.status = timed_out`
+2. Sets parent `WorkflowStep.status = timed_out`
+3. Triggers retry if `retry_count < max_retries`, otherwise marks `cancelled` and notifies workspace members
+
+### Scheduler
+
+Runs every 5 seconds. For each WorkflowStep with `status = pending` where all `depends_on_step_ids` have `status = completed` and the parent WorkflowRun has no other step with `status = running`:
+1. Acquires execution_lock (database row lock)
+2. Sets `WorkflowStep.status = running`
+3. Creates a new AgentRun with `attempt_number = retry_count + 1`
+4. Enqueues the AgentRun for the workspace runner
+
+### Retry Protocol
+
+When a step transitions to `retrying`:
+1. All `draft` Artifacts from the previous AgentRun are marked `status = superseded`
+2. Only `committed` Artifacts remain visible to the new AgentRun
+3. The new AgentRun receives the previous `checkpoint_data` (if set) to enable mid-run resumption
+4. `WorkflowStep.retry_count` is incremented
+
+---
+
+## 24. Artifact Specification
+
+### Artifact Roles
+
+| Role | Produced By | Consumed By |
+|------|-------------|-------------|
+| `PRD` | Human (paste/upload) | Planner Agent |
+| `PLAN` | Planner Agent | Task Breakdown Agent, human review |
+| `TASK_LIST` | Task Breakdown Agent | Coding Agents, human review |
+| `CODE_PATCH` | Coding Agent | Review Agent, human review (diff view) |
+| `TEST_REPORT` | Test Agent | Review Agent, human review |
+| `REVIEW_COMMENT` | Review Agent | Human final review |
+| `PR_SUMMARY` | Summarizer Agent | Human final review, GitHub PR body |
+| `HUMAN_EDIT` | Human | Next step (same role as the edited artifact) |
+
+### TestResultArtifact Schema
+
+When the Test Agent produces an Artifact with `role = TEST_REPORT`, the `content` field must be valid JSON:
+
+```json
+{
+  "passed": true,
+  "summary": {
+    "total": 42,
+    "passed": 41,
+    "failed": 0,
+    "skipped": 1
+  },
+  "coverage_pct": 84.2,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "exit_code": 0,
+  "raw_output_ref": "s3://aww-artifacts/runs/{run_id}/test-raw.txt"
+}
+```
+
+- `passed: boolean` — overall pass/fail verdict
+- `coverage_pct: number | null` — null if coverage tooling not configured
+- `raw_output_ref: string` — object storage key for full command output (not stored in DB)
+
+### Step Pass Gates
+
+A WorkflowStep may not auto-advance unless its pass gate conditions are met (checked after AgentRun completes, before any human approval gate):
+
+| Step | Pass Gate Conditions |
+|------|---------------------|
+| Generate Engineering Plan | `PLAN` artifact exists AND `content` is non-empty |
+| Break Into Tasks | `TASK_LIST` artifact exists AND at least 1 task defined |
+| Implement Scoped Tasks | `CODE_PATCH` artifact exists for each assigned task |
+| Run Tests | `TEST_REPORT` artifact exists AND `passed = true` AND `lint_errors = 0` |
+| Agent Code Review | `REVIEW_COMMENT` artifact exists |
+| Generate PR Summary | `PR_SUMMARY` artifact exists |
+
+If a pass gate fails, the step transitions to `failed` and the retry protocol activates.
+
+### Agent Invocation Payload
+
+Each AgentRun is invoked with a structured payload logged to object storage (referenced by `AgentRun.input_payload_ref`):
+
+```json
+{
+  "agent_role": "coding",
+  "system_prompt": "...",
+  "workspace_context": {
+    "repo_url": "...",
+    "default_branch": "...",
+    "feature_branch": "..."
+  },
+  "step_instructions": "...",
+  "input_artifacts": [
+    { "role": "PLAN", "content": "...(full)" },
+    { "role": "TASK_LIST", "content": "...(full)" }
+  ],
+  "tools_allowed": ["read_file", "write_file", "run_shell"],
+  "token_budget": 100000
+}
+```
+
+Context inclusion rules (MVP):
+- `PRD`, `PLAN`, `TASK_LIST`: always full content
+- `CODE_PATCH`, `TEST_REPORT`: full content if < 8000 tokens; summarized otherwise
+- Source code files: only files in the task's owned scope; truncated to 2000 tokens per file
+- When total token estimate exceeds 80% of the model's context window, the runner logs a warning and uses the most recent artifacts only
+
+---
+
+## 25. Positioning
 
 Short positioning:
 
