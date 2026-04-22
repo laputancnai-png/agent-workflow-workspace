@@ -144,14 +144,41 @@ A specialized AI worker assigned to a step. MVP roles:
 
 ### Human Step-In
 
-A controlled intervention point where a person can:
+A controlled intervention point where a person can take one of five actions. Each action has a defined outcome:
 
-- approve
-- reject
-- edit
-- request changes
-- redirect the agent
-- take over the step manually
+**Approve**
+- Step transitions to `completed`; workflow advances to the next step
+- Decision recorded in audit log
+
+**Reject**
+- Step transitions to `cancelled`; WorkflowRun pauses with no automatic retry
+- Use when the step output is fundamentally wrong and not salvageable
+
+**Request Changes**
+1. A Finding Selector panel opens listing all Review Agent findings (if any) plus a free-text "Additional Instructions" field
+2. Human selects which findings to address and optionally adds instructions
+3. On submit: the decision comment + selected findings are injected as additional context into the next AgentRun's Agent Invocation Payload; step transitions back to `running`
+4. `Decision.target_step_id` defaults to the current step (re-run same agent); human may select an earlier step to rewind further
+5. The previous AgentRun's artifacts are marked `superseded`
+
+**Edit Output**
+1. A split-pane editor opens: left pane shows the current Artifact content (read-only), right pane is editable; live diff is shown between panes
+2. On save: a new Artifact is created with `role = HUMAN_EDIT`, `parent_artifact_id` pointing to the original, `created_by_type = human`, `status = committed`; the original Artifact is marked `superseded`
+3. Step does **not** auto-advance; human must explicitly click **Approve** to push the edited artifact to the next step
+4. The edit is recorded as `Decision.action = edit` with `resulting_artifact_id = new artifact ID`
+
+**Take Over**
+1. Any running AgentRun for this step is immediately cancelled; step transitions to `human_owned`
+2. AWW displays a "Local Work Instructions" panel with: current feature branch name (copy button), step objective and owned file scope, and the git checkout command
+3. Human works in their local IDE on the feature branch
+4. AWW detects completion when new commits appear on the feature branch after the take-over timestamp (via GitHub Webhook or 60-second polling; see §22)
+5. Upon detection: AWW creates a `CODE_PATCH` Artifact with `created_by_type = human`, marks step `completed`, advances the workflow
+6. Human may also click "Mark as Done" in AWW UI to trigger detection immediately
+
+**Rerun Step**
+- Cancels current AgentRun (if running); creates a new AgentRun with the same inputs
+- `retry_count` is not incremented (human-initiated rerun, distinct from automatic retry)
+- Previous artifacts are marked `superseded`
 
 ### Artifact
 
@@ -375,6 +402,14 @@ Includes:
 - Add comments to any artifact.
 - Convert review feedback into follow-up tasks.
 - Take over a step manually.
+- Expose a programmatic approval API endpoint (`POST /api/v1/steps/{step_id}/decision`) accepting `{ action, comment, target_step_id }` to enable automated testing and CI integration.
+- Support a test mode flag (`X-AWW-Test-Mode: true` request header) that bypasses human gating for specified steps, enabling end-to-end automated test runs without manual approval.
+
+### Agent Execution (additions)
+
+- Validate that each AgentRun's output Artifact conforms to its role's schema before marking the step as eligible for the pass gate check (see §24).
+- Emit all defined SSE events (see §12) when step and agent run statuses change.
+- Record `AgentRun.input_payload_ref` and `AgentRun.output_payload_ref` to object storage for every AgentRun.
 
 ### Audit Trail
 
@@ -392,6 +427,42 @@ Includes:
 - The system should recover from failed agent runs without losing workspace state.
 - The MVP should support local or GitHub-based repositories.
 - Sensitive repo data should not be exposed outside configured model/tool boundaries.
+
+### Real-Time Push Protocol
+
+The AWW web client subscribes to server-sent events (SSE) over a persistent HTTP connection.
+
+**Protocol:** Server-Sent Events (SSE) — single direction (server → client), automatic reconnection on disconnect, compatible with standard HTTP proxies.
+
+**Minimum event types the server must emit:**
+
+| Event Type | Payload |
+|-----------|---------|
+| `step.status_changed` | `{ step_id, new_status, timestamp }` |
+| `agent_run.started` | `{ agent_run_id, step_id, agent_role }` |
+| `agent_run.heartbeat` | `{ agent_run_id, progress_note: string \| null }` |
+| `agent_run.completed` | `{ agent_run_id, step_id, head_commit_sha \| null }` |
+| `agent_run.failed` | `{ agent_run_id, step_id, error_summary }` |
+| `artifact.created` | `{ artifact_id, step_id, role }` |
+| `runner.status_changed` | `{ runner_id, new_status: online \| offline }` |
+
+**Disconnect handling:** On SSE connection drop, the browser displays a "Reconnecting…" indicator. On reconnect, the client fetches current workspace state via REST to reconcile missed events, then resumes SSE.
+
+**Agent timeout UX:** If an AgentRun's last heartbeat is >90 seconds ago (client-detected), the UI transitions the step icon to a `warning` state and shows "Agent may be unresponsive — Rerun or Take Over available."
+
+### Mobile Strategy (MVP)
+
+The primary use case for AWW is desktop (≥1180px). Mobile is not a primary use case for MVP.
+
+**MVP mobile scope (supported):**
+- Receive browser push notification when a step requires human action
+- View approval gate controls (Approve / Request Changes) on a simplified single-panel view
+- Submit an approval decision from mobile
+
+**MVP mobile scope (not supported):**
+- Full workflow management, code diff review, artifact editing
+
+In the simplified mobile view, the Control Plane (approval gate) is rendered first, above the workflow step list.
 
 ## 13. UX Requirements
 
@@ -430,7 +501,103 @@ Approval controls:
 - Take Over
 - Rerun Step
 
-## 14. Data Model Draft
+### Primary Mental Model
+
+The user's core question when opening AWW is: **"What do I need to do right now?"**
+
+AWW is a **human decision router**, not a workflow visualizer. The UI prioritizes:
+1. Current blocking action (approval gate or awaiting human input) — highest visual weight
+2. Context needed to make the decision (diff, test results, artifacts)
+3. Historical record and audit trail — accessible but not prominent
+
+The Control Plane (approval gate buttons) must be the most visually prominent element when a human action is required, regardless of screen layout.
+
+### Core Task Flows
+
+#### Task Flow A: Engineering Lead Starts First Workflow
+
+1. Opens AWW → **Empty state view** with centered "Create Workspace" CTA
+2. Clicks "Create Workspace" → **3-step wizard modal:**
+   - Step 1: Project name + select workflow template (MVP: one option — "PRD to PR")
+   - Step 2: Connect repository — "Connect GitHub" OAuth or paste repo URL
+   - Step 3: Add PRD — three tabs: Write, Paste, Upload (.md/.txt)
+3. Wizard completes → workspace view opens; Step 1 (Create Workspace) marked `completed`
+4. System marks Step 2 (Add PRD) `running` (human step); PRD provided in wizard
+5. User clicks "Confirm PRD Ready" → Step 2 completes; Planner Agent triggered (Step 3 → `running`)
+6. Planner Agent runs with animated step icon + live heartbeat log (~30–90 seconds)
+7. User receives notification; returns to approve or request changes
+
+#### Task Flow B: Request Changes → Agent Rerun → Re-review
+
+1. Human final review step active; user reads diff + test results + review findings
+2. User clicks "Request Changes" → **Finding Selector panel** slides in from right:
+   - Lists Review Agent findings with severity badges (High / Medium / Low)
+   - Checkboxes to select which findings to address
+   - "Additional Instructions" textarea at the bottom
+3. User selects findings + adds instructions; clicks "Submit Changes"
+4. System creates fix tasks from selected findings; injects into next AgentRun context
+5. Coding Agent and Test Agent re-run automatically (workflow rewinds to Step 5)
+6. User receives notification: "Agent completed fix pass — your review is needed again"
+7. User returns to Step 7 with fresh diff and updated test results
+
+#### Task Flow C: Take Over → Local IDE → Re-enter Workflow
+
+1. Coding Agent step has been failing repeatedly; user clicks "Take Over"
+2. Step transitions to `human_owned`; **Local Work Instructions panel** appears:
+   ```
+   Branch: aww/shopflow-web/a1b2c3
+   Task: Implement checkout cart persistence
+   Files in scope: src/cart/*, src/api/cart.ts
+
+   git checkout aww/shopflow-web/a1b2c3 && git pull
+   ```
+3. User works in local IDE, commits, and pushes to the branch
+4. AWW detects the push via GitHub Webhook (or within 60 seconds via polling)
+5. AWW creates a `CODE_PATCH` Artifact from the commit diff; step transitions to `completed`
+6. Workflow automatically advances to Step 6 (Run Tests)
+
+### First-Time User Experience (FTUE)
+
+#### Empty State
+
+When a user has no workspaces, the main content area shows:
+- Centered illustration of a completed AWW workflow
+- Headline: "Ship features with confidence"
+- Subheadline: "Define the workflow once. Agents implement. You review and approve."
+- Primary CTA: "Create Your First Workspace"
+
+#### New Workspace Wizard
+
+3-step modal with progress indicator. Each step has a single primary action:
+- Step 1 "Project" → validates non-empty name → "Next"
+- Step 2 "Repository" → "Connect GitHub" (OAuth) or "Use Local Runner" (shows `aww-runner register` command) → validates successful connection → "Next"
+- Step 3 "PRD" → validates non-empty content → "Create Workspace"
+
+#### Agent Running State
+
+When an agent step is running, the step row shows an animated pulsing icon (teal) and the last 3 lines of runner output updated via SSE. Users may close the browser tab; the workflow continues running and they receive an in-app notification badge when the step completes.
+
+### Error States
+
+| Error | Step Icon | Control Plane Shows |
+|-------|-----------|---------------------|
+| Agent failed (< max_retries) | Amber | "Retrying in Xs…" + "Rerun Now" + "Take Over" |
+| Agent failed (max_retries reached) | Red | "Agent could not complete" + "Take Over" + "Cancel" |
+| Agent timed out | Red | "Agent is unresponsive" + "Rerun" + "Take Over" |
+| Tests failed (pass gate blocked) | Red | Test report summary + "Request Changes" + "Take Over" |
+| Runner offline | Gray (all agent steps) | "Runner offline — start your runner to continue" |
+
+## 14. Data Model v2
+
+### WorkflowTemplate *(new)*
+
+- id
+- name
+- description
+- steps: WorkflowStepTemplate[]
+- version: integer
+- created_by
+- created_at
 
 ### Workspace
 
@@ -440,7 +607,9 @@ Approval controls:
 - default_branch
 - created_by
 - created_at
-- status
+- status: enum (active | archived)
+- runner_id: string *(links to registered runner)*
+- github_installation_id: string | null
 
 ### WorkflowRun
 
@@ -448,76 +617,128 @@ Approval controls:
 - workspace_id
 - template_id
 - current_step_id
-- status
+- status: enum (pending | running | paused | completed | failed | cancelled)
 - started_at
 - completed_at
+- feature_branch: string *(e.g. aww/shopflow-web/a1b2c3)*
+- base_commit_sha: string *(HEAD of default_branch at run creation)*
+- trigger_type: enum (manual | webhook | scheduled)
+- triggered_by: string
 
 ### WorkflowStep
 
 - id
 - workflow_run_id
+- template_step_id
 - name
-- owner_type
-- agent_role
-- status
-- input_artifact_ids
-- output_artifact_ids
-- approval_required
-- retry_count
+- owner_type: enum (human | agent | approval_gate)
+- agent_role: enum (planner | task_breakdown | coding | test | review | summarizer) | null
+- status: enum (pending | running | completed | failed | timed_out | retrying | cancelled | human_owned) *(see §23)*
+- input_artifact_ids: string[]
+- input_artifact_roles: ArtifactRole[] *(declared types expected)*
+- output_artifact_ids: string[]
+- approval_required: boolean
+- retry_count: integer
+- max_retries: integer *(default: 3)*
+- retry_backoff_seconds: integer *(default: 60)*
+- depends_on_step_ids: string[]
+- execution_lock: { locked_by_agent_run_id, locked_at, lock_expires_at } | null
+- completed_at: timestamp | null
 
 ### Artifact
 
 - id
 - workspace_id
 - step_id
-- type
+- role: enum (PRD | PLAN | TASK_LIST | CODE_PATCH | TEST_REPORT | REVIEW_COMMENT | PR_SUMMARY | HUMAN_EDIT) *(replaces untyped `type`)*
 - title
-- content
-- file_refs
-- created_by
+- content: string *(structured text; never raw source code files)*
+- file_refs: string[] *(changed file paths)*
+- git_commit_sha: string | null
+- status: enum (draft | committed | superseded)
+- version: integer *(monotonically increasing within a step's artifacts of the same role)*
+- parent_artifact_id: string | null *(edit lineage)*
+- created_by: string
+- created_by_type: enum (human | agent)
 - created_at
+
+**Immutability principle:** Artifacts are never modified after creation. An "edit" creates a new Artifact (`parent_artifact_id` → original, `status = committed`); the original becomes `superseded`. Only `committed` Artifacts are visible to downstream steps.
 
 ### Decision
 
 - id
 - step_id
-- actor
-- action
-- comment
+- actor: string
+- action: enum (approve | reject | request_changes | edit | take_over | rerun)
+- comment: string | null
 - created_at
+- artifact_version_id: string | null *(snapshot of the Artifact version this decision was made on)*
+- resulting_artifact_id: string | null *(for edit/take_over: ID of the resulting Artifact)*
+- target_step_id: string | null *(for request_changes: step to rewind to; null = current step)*
 
 ### AgentRun
 
 - id
 - step_id
 - agent_role
-- model
-- input_summary
-- output_summary
-- changed_files
-- command_logs
-- status
+- model: string *(e.g. claude-sonnet-4-6)*
+- runner_id: string
+- input_summary: string *(UI display; max 500 chars)*
+- input_payload_ref: string | null *(object storage key for full prompt; not stored in DB)*
+- output_summary: string *(UI display; max 500 chars)*
+- output_payload_ref: string | null *(object storage key for full raw output)*
+- changed_files: string[]
+- command_logs: string *(sanitized; secrets redacted)*
+- status: enum (pending | running | completed | failed | timed_out | cancelled)
+- attempt_number: integer *(1-indexed retry attempt)*
+- checkpoint_data: jsonb | null *(agent-defined resume state)*
+- last_heartbeat_at: timestamp | null *(updated every 30s by runner)*
+- timeout_seconds: integer *(per role: coding=1800, test=600, review=900, planner=600)*
+- git_branch: string | null
+- head_commit_sha: string | null *(HEAD after agent commits)*
 - started_at
 - completed_at
+- cancelled_at: timestamp | null
 
 ## 15. Integrations
 
-### MVP
+### GitHub Integration Levels
 
-- GitHub repository
-- Local git workspace
-- OpenAI or Anthropic model provider
-- Basic shell command execution for tests
+AWW defines three integration levels with GitHub. MVP targets Level 2.
+
+**Level 1 — Git Protocol Only**
+- Clone, fetch, push via git
+- Authentication: Personal Access Token or Deploy Key in runner local config
+- No GitHub API calls; supports any git host (GitHub, GitLab, Bitbucket, self-hosted)
+
+**Level 2 — GitHub REST API (MVP)**
+- Everything in Level 1, plus:
+- Read repository metadata: branch list, default branch
+- Create pull requests via `POST /repos/{owner}/{repo}/pulls`
+- Write PR body from `PR_SUMMARY` artifact content
+- Required OAuth scope: `repo` (read + write to private repositories)
+- AWW registers as a GitHub OAuth App; users authorize via browser OAuth flow
+
+**Level 3 — GitHub App (Post-MVP)**
+- Fine-grained per-repository permissions, organization-level installation, webhook events
+- Not included in MVP
+
+### MVP Integrations
+
+- GitHub repository (Level 2)
+- AWW Local Runner (see §20) — local git workspace and shell command execution
+- OpenAI API (model: gpt-4o or configurable)
+- Anthropic API (model: claude-sonnet-4-6 or configurable)
+- Model configuration: workspace-level (one provider + model for all agent roles in MVP)
+- Object storage (S3-compatible) — full prompt/output payloads and raw test logs
 
 ### Later
 
-- Linear
-- Jira
-- Slack
-- GitHub pull requests
+- Linear, Jira, Slack
+- GitHub App (Level 3)
 - CI providers
-- SSO
-- Secrets manager
+- SSO, Secrets manager
+- Per-step model routing (different models for different agent roles)
 
 ## 16. Success Metrics
 
