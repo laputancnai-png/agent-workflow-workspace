@@ -32,3 +32,7 @@ export const db = drizzle(client, {
 });
 
 export type DB = typeof db;
+
+export async function closeDb() {
+  await client.end();
+}
