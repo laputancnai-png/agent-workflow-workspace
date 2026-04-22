@@ -7,6 +7,7 @@ import { agentRuns, runners } from '../../src/db/schema/runners.js';
 import { users } from '../../src/db/schema/users.js';
 import { workflowSteps } from '../../src/db/schema/workflows.js';
 import { workspaces } from '../../src/db/schema/workspaces.js';
+import { applyDecision } from '../../src/services/state-machine.js';
 
 describe('Schema shapes', () => {
   it('users table has required columns', () => {
@@ -40,5 +41,28 @@ describe('Schema shapes', () => {
   it('auditEvents table has hash columns', () => {
     expect(auditEvents.selfHash).toBeDefined();
     expect(auditEvents.prevHash).toBeDefined();
+  });
+});
+
+describe('applyDecision', () => {
+  it('approve transitions step to completed', () => {
+    const result = applyDecision('running', 'approve');
+
+    expect(result.newStepStatus).toBe('completed');
+    expect(result.runEffect).toBe('advance');
+  });
+
+  it('reject transitions step to cancelled and fails the run', () => {
+    const result = applyDecision('running', 'reject');
+
+    expect(result.newStepStatus).toBe('cancelled');
+    expect(result.runEffect).toBe('fail_run');
+  });
+
+  it('request_changes sets status to retrying', () => {
+    const result = applyDecision('running', 'request_changes');
+
+    expect(result.newStepStatus).toBe('retrying');
+    expect(result.runEffect).toBe('requeue_step');
   });
 });
