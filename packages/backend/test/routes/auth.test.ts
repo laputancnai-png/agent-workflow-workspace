@@ -1,15 +1,28 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { FastifyInstance } from 'fastify';
 
-import { checkDbConnection } from '../helpers/db.js';
+import { buildApp } from '../helpers/app.js';
 
-describe('DB', () => {
-  beforeAll(() => {
-    process.env.DATABASE_URL ??= 'postgres://aww:aww@localhost:5432/aww';
-  });
+let app: FastifyInstance;
 
-  it('connects to postgres', async () => {
-    const result = await checkDbConnection();
+beforeAll(async () => {
+  process.env.JWT_SECRET ??= 'test-jwt-secret-minimum-32-chars';
+  process.env.REFRESH_SECRET ??= 'test-refresh-secret-minimum-32-chars';
+  process.env.FRONTEND_URL ??= 'http://localhost:5173';
+  app = await buildApp();
+});
 
-    expect(result).toBeDefined();
+afterAll(async () => {
+  await app.close();
+});
+
+describe('POST /api/v1/auth/refresh', () => {
+  it('returns 401 without cookie', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+    });
+
+    expect(res.statusCode).toBe(401);
   });
 });
