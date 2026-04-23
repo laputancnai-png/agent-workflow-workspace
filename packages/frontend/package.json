@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
