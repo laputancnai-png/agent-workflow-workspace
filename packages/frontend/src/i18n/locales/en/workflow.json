@@ -1,0 +1,30 @@
+{
+  "workspace": "Workspace",
+  "workflow": "Workflow",
+  "run": "Run",
+  "step": "Step",
+  "status": {
+    "pending": "Pending",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "timed_out": "Timed Out",
+    "retrying": "Retrying",
+    "cancelled": "Cancelled",
+    "human_owned": "Human Takeover"
+  },
+  "agent_role": {
+    "planner": "Planner Agent",
+    "tasker": "Task Breakdown Agent",
+    "coder": "Coding Agent",
+    "tester": "Test Agent",
+    "reviewer": "Review Agent",
+    "summarizer": "Summarizer Agent"
+  },
+  "artifact": "Artifact",
+  "audit_trail": "Audit Trail",
+  "agent_running": "Agent Running",
+  "may_not_respond": "May not respond",
+  "no_runner": "No Runner online",
+  "runner_connected": "Runner connected"
+}

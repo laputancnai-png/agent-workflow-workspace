@@ -1,0 +1,22 @@
+{
+  "app_title": "Agent Workflow Workspace",
+  "save": "Save",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "loading": "Loading...",
+  "error": "Error",
+  "retry": "Retry",
+  "back": "Back",
+  "next": "Next",
+  "create": "Create",
+  "delete": "Delete",
+  "edit": "Edit",
+  "view": "View",
+  "close": "Close",
+  "search": "Search",
+  "settings": "Settings",
+  "logout": "Log out",
+  "language": "Language",
+  "unknown_error": "Unknown error",
+  "empty_state_hint": "Create your first workspace to start an AI-powered workflow"
+}

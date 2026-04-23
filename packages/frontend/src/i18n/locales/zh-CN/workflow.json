@@ -1,0 +1,30 @@
+{
+  "workspace": "工作区",
+  "workflow": "工作流",
+  "run": "运行",
+  "step": "步骤",
+  "status": {
+    "pending": "待开始",
+    "running": "运行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "timed_out": "已超时",
+    "retrying": "重试中",
+    "cancelled": "已取消",
+    "human_owned": "人工接管中"
+  },
+  "agent_role": {
+    "planner": "规划 Agent",
+    "tasker": "拆解 Agent",
+    "coder": "编码 Agent",
+    "tester": "测试 Agent",
+    "reviewer": "审查 Agent",
+    "summarizer": "摘要 Agent"
+  },
+  "artifact": "制品",
+  "audit_trail": "审计日志",
+  "agent_running": "Agent 运行中",
+  "may_not_respond": "可能无响应",
+  "no_runner": "无 Runner 在线",
+  "runner_connected": "Runner 已连接"
+}

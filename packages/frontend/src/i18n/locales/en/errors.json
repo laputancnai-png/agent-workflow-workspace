@@ -1,0 +1,9 @@
+{
+  "network_error": "Network error. Please check your connection.",
+  "unauthorized": "Session expired. Please log in again.",
+  "forbidden": "You don't have permission to do this.",
+  "not_found": "Resource not found.",
+  "server_error": "Server error. Please try again later.",
+  "runner_offline": "Runner is offline. Cannot execute agent tasks.",
+  "sse_disconnected": "Real-time connection lost. Reconnecting..."
+}

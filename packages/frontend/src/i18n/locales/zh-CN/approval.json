@@ -1,0 +1,17 @@
+{
+  "approve": "批准",
+  "reject": "拒绝",
+  "request_changes": "要求修改",
+  "edit_output": "编辑输出",
+  "take_over": "人工接管",
+  "rerun_step": "重跑步骤",
+  "approve_plan": "批准计划",
+  "decision_submitted": "决策已提交",
+  "changes_requested": "修改请求已提交，Agent 将重新执行",
+  "take_over_instructions": "接管指南",
+  "take_over_branch": "本地分支",
+  "take_over_hint": "在本地 IDE 中切换到上述分支，完成修改后推送，AWW 将自动检测并恢复工作流",
+  "finding_selector_title": "选择问题范围",
+  "finding_selector_placeholder": "描述需要修改的问题...",
+  "submit_changes": "提交修改请求"
+}
