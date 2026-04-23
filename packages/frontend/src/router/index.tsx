@@ -1,22 +1,41 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, redirect } from 'react-router-dom';
+import { AppShell } from '../layout/AppShell.js';
+import { WorkspaceLayout } from '../layout/WorkspaceLayout.js';
+import { LoginPage } from '../pages/LoginPage.js';
+import { OAuthCallbackPage } from '../pages/OAuthCallbackPage.js';
+import { RunnerMgmtPage } from '../pages/RunnerMgmtPage.js';
+import { RunDetailPage } from '../pages/RunDetailPage.js';
+import { SettingsPage } from '../pages/SettingsPage.js';
+import { WorkspaceOverviewPage } from '../pages/WorkspaceOverviewPage.js';
+import { WorkspacesPage } from '../pages/WorkspacesPage.js';
+import { useAuthStore } from '../stores/auth.store.js';
 
-function ScaffoldPage() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--bg)] p-6 text-[var(--ink)]">
-      <section className="w-full max-w-3xl">
-        <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-[var(--teal)]">AWW</p>
-        <h1 className="text-3xl font-semibold">Agent Workflow Workspace</h1>
-        <p className="mt-4 max-w-xl text-sm leading-6 text-[var(--muted)]">
-          Frontend shell is ready for the workflow UI, i18n, REST API, and SSE integration.
-        </p>
-      </section>
-    </main>
-  );
+function requireAuth() {
+  const token = useAuthStore.getState().token;
+  if (!token) throw redirect('/login');
+  return null;
 }
 
 export const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
+  { path: '/oauth/callback', element: <OAuthCallbackPage /> },
   {
-    path: '*',
-    element: <ScaffoldPage />
+    path: '/',
+    loader: requireAuth,
+    element: <AppShell />,
+    children: [
+      { index: true, loader: () => redirect('/workspaces') },
+      { path: 'workspaces', element: <WorkspacesPage /> },
+      {
+        path: 'w/:workspaceSlug',
+        element: <WorkspaceLayout />,
+        children: [
+          { index: true, element: <WorkspaceOverviewPage /> },
+          { path: 'runs/:runId', element: <RunDetailPage /> },
+          { path: 'runners', element: <RunnerMgmtPage /> },
+          { path: 'settings', element: <SettingsPage /> }
+        ]
+      }
+    ]
   }
 ]);
