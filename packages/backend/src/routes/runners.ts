@@ -23,6 +23,11 @@ interface ClaimTaskQuerystring {
   timeout?: string;
 }
 
+interface AckTaskParams {
+  runnerId: string;
+  agentRunId: string;
+}
+
 export const runnerRoutes: FastifyPluginAsync = async (app) => {
   app.post('/register', async (request, reply) => {
     const parsed = registerSchema.safeParse(request.body);
@@ -75,7 +80,7 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
         querystring: {
           type: 'object',
           properties: {
-            timeout: { type: 'string' }
+            timeout: { type: 'string', pattern: '^[0-9]+$' }
           }
         }
       }
@@ -88,7 +93,8 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(403).send({ error: 'forbidden_runner' });
       }
 
-      const timeoutSeconds = Math.min(Number.parseInt(request.query.timeout ?? '25', 10), 30);
+      const rawTimeout = Number.parseInt(request.query.timeout ?? '25', 10);
+      const timeoutSeconds = Math.min(Number.isNaN(rawTimeout) ? 25 : rawTimeout, 30);
       const redis = getRedis();
       const task = await redis.brpop(`runner:queue:${runnerId}`, timeoutSeconds);
 
@@ -112,6 +118,45 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
         .returning();
 
       return { data: updated };
+    }
+  );
+
+  app.post<{ Params: AckTaskParams }>(
+    '/:runnerId/tasks/:agentRunId/ack',
+    {
+      preHandler: requireRunner,
+      schema: {
+        params: {
+          type: 'object',
+          required: ['runnerId', 'agentRunId'],
+          properties: {
+            runnerId: { type: 'string', minLength: 1 },
+            agentRunId: { type: 'string', minLength: 1 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const { runnerId, agentRunId } = request.params;
+      const authenticatedRunnerId = (request as RunnerRequest).runnerId;
+
+      if (authenticatedRunnerId !== runnerId) {
+        return reply.code(403).send({ error: 'forbidden_runner' });
+      }
+
+      const agentRun = await db.query.agentRuns.findFirst({
+        where: eq(agentRuns.id, agentRunId),
+      });
+
+      if (!agentRun) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
+
+      if (agentRun.runnerId !== runnerId) {
+        return reply.code(403).send({ error: 'forbidden_runner' });
+      }
+
+      return { data: agentRun };
     }
   );
 };

@@ -239,4 +239,98 @@ describe('Runner routes', () => {
 
     expect(res.statusCode).toBe(204);
   });
+
+  it('GET /runners/:runnerId/tasks/claim returns 400 when timeout is non-numeric', async () => {
+    const suffix = `claim-nan-${Date.now().toString(36)}`;
+    const { runnerA, runnerSecretA } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/runners/${runnerA.id}/tasks/claim?timeout=abc`,
+      headers: {
+        authorization: signRunnerAuth(runnerA.id, runnerSecretA)
+      }
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('GET /runners/:runnerId/tasks/claim returns 200 with claimed task when queue has an item', async () => {
+    const { getRedis } = await import('../../src/lib/redis.js');
+    const suffix = `claim-200-${Date.now().toString(36)}`;
+    const { runnerA, runnerSecretA, agentRun } = await createRunnerScenario(suffix);
+    const redis = getRedis();
+    await redis.lpush(`runner:queue:${runnerA.id}`, agentRun.id);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/runners/${runnerA.id}/tasks/claim?timeout=1`,
+      headers: {
+        authorization: signRunnerAuth(runnerA.id, runnerSecretA)
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { data: { id: string } };
+    expect(body.data.id).toBe(agentRun.id);
+  });
+
+  it('POST /runners/:runnerId/tasks/:agentRunId/ack returns 401 without runner auth', async () => {
+    const suffix = `ack-noauth-${Date.now().toString(36)}`;
+    const { runnerA, agentRun } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/runners/${runnerA.id}/tasks/${agentRun.id}/ack`
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('POST /runners/:runnerId/tasks/:agentRunId/ack returns 403 when runner does not own the agent run', async () => {
+    const suffix = `ack-forbid-${Date.now().toString(36)}`;
+    const { runnerA, runnerB, runnerSecretB, agentRun } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/runners/${runnerA.id}/tasks/${agentRun.id}/ack`,
+      headers: {
+        authorization: signRunnerAuth(runnerB.id, runnerSecretB)
+      }
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('POST /runners/:runnerId/tasks/:agentRunId/ack returns 404 for unknown agent run', async () => {
+    const suffix = `ack-404-${Date.now().toString(36)}`;
+    const { runnerA, runnerSecretA } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/runners/${runnerA.id}/tasks/nonexistent-run-id/ack`,
+      headers: {
+        authorization: signRunnerAuth(runnerA.id, runnerSecretA)
+      }
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('POST /runners/:runnerId/tasks/:agentRunId/ack returns 200 with agent run for valid request', async () => {
+    const suffix = `ack-ok-${Date.now().toString(36)}`;
+    const { runnerA, runnerSecretA, agentRun } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/runners/${runnerA.id}/tasks/${agentRun.id}/ack`,
+      headers: {
+        authorization: signRunnerAuth(runnerA.id, runnerSecretA)
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { data: { id: string; status: string } };
+    expect(body.data.id).toBe(agentRun.id);
+  });
 });
