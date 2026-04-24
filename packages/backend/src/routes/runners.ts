@@ -15,6 +15,14 @@ const registerSchema = z.object({
   capabilities: z.array(z.string()),
 });
 
+interface ClaimTaskParams {
+  runnerId: string;
+}
+
+interface ClaimTaskQuerystring {
+  timeout?: string;
+}
+
 export const runnerRoutes: FastifyPluginAsync = async (app) => {
   app.post('/register', async (request, reply) => {
     const parsed = registerSchema.safeParse(request.body);
@@ -52,38 +60,58 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
     return { data: { runner_id: runner.id, runner_secret: runnerSecret } };
   });
 
-  app.get('/:runnerId/tasks/claim', { preHandler: requireRunner }, async (request, reply) => {
-    const { runnerId } = request.params as { runnerId: string };
-    const authenticatedRunnerId = (request as RunnerRequest).runnerId;
+  app.get<{ Params: ClaimTaskParams; Querystring: ClaimTaskQuerystring }>(
+    '/:runnerId/tasks/claim',
+    {
+      preHandler: requireRunner,
+      schema: {
+        params: {
+          type: 'object',
+          required: ['runnerId'],
+          properties: {
+            runnerId: { type: 'string', minLength: 1 }
+          }
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            timeout: { type: 'string' }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const { runnerId } = request.params;
+      const authenticatedRunnerId = (request as RunnerRequest).runnerId;
 
-    if (authenticatedRunnerId !== runnerId) {
-      return reply.code(403).send({ error: 'forbidden_runner' });
+      if (authenticatedRunnerId !== runnerId) {
+        return reply.code(403).send({ error: 'forbidden_runner' });
+      }
+
+      const timeoutSeconds = Math.min(Number.parseInt(request.query.timeout ?? '25', 10), 30);
+      const redis = getRedis();
+      const task = await redis.brpop(`runner:queue:${runnerId}`, timeoutSeconds);
+
+      if (!task) {
+        return reply.code(204).send();
+      }
+
+      const agentRunId = task[1];
+      const agentRun = await db.query.agentRuns.findFirst({
+        where: eq(agentRuns.id, agentRunId),
+      });
+
+      if (!agentRun) {
+        return reply.code(204).send();
+      }
+
+      const [updated] = await db
+        .update(agentRuns)
+        .set({ runnerId, status: 'running', updatedAt: new Date() })
+        .where(eq(agentRuns.id, agentRunId))
+        .returning();
+
+      return { data: updated };
     }
-
-    const query = request.query as { timeout?: string };
-    const timeoutSeconds = Math.min(Number.parseInt(query.timeout ?? '25', 10), 30);
-    const redis = getRedis();
-    const task = await redis.brpop(`runner:queue:${runnerId}`, timeoutSeconds);
-
-    if (!task) {
-      return reply.code(204).send();
-    }
-
-    const agentRunId = task[1];
-    const agentRun = await db.query.agentRuns.findFirst({
-      where: eq(agentRuns.id, agentRunId),
-    });
-
-    if (!agentRun) {
-      return reply.code(204).send();
-    }
-
-    const [updated] = await db
-      .update(agentRuns)
-      .set({ runnerId, status: 'running', updatedAt: new Date() })
-      .where(eq(agentRuns.id, agentRunId))
-      .returning();
-
-    return { data: updated };
-  });
+  );
 };

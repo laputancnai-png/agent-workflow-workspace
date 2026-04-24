@@ -23,13 +23,16 @@ interface ParsedSSEEvent {
 }
 
 function parseSSESegment(segment: string): ParsedSSEEvent | null {
+  const dataLines: string[] = [];
   const parsed: ParsedSSEEvent = { data: '' };
 
   for (const line of segment.split('\n')) {
     if (line.startsWith('id:')) parsed.id = line.slice(3).trim();
     if (line.startsWith('event:')) parsed.event = line.slice(6).trim();
-    if (line.startsWith('data:')) parsed.data += line.slice(5).trim();
+    if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
   }
+
+  parsed.data = dataLines.join('');
 
   return parsed.data ? parsed : null;
 }

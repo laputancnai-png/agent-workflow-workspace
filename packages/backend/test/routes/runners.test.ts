@@ -77,7 +77,7 @@ describe('Runner routes', () => {
       .values({ stepId: step.id, runnerId: runnerA.id, status: 'running', agentRole: 'coder' })
       .returning();
 
-    return { workspace, runnerA, runnerB, runnerSecretA, runnerSecretB, agentRun };
+    return { runnerA, runnerB, runnerSecretA, runnerSecretB, agentRun };
   }
 
   it('POST /runners/register returns 400 without valid token', async () => {
@@ -104,7 +104,7 @@ describe('Runner routes', () => {
   });
 
   it('POST /agent-runs/:id/heartbeat rejects missing runner auth', async () => {
-    const suffix = Date.now().toString(36);
+    const suffix = `missing-heartbeat-${Date.now().toString(36)}`;
     const [user] = await db
       .insert(users)
       .values({ githubId: `gh-${suffix}`, login: `u-${suffix}`, email: `${suffix}@example.com` })
@@ -223,5 +223,20 @@ describe('Runner routes', () => {
     });
 
     expect(res.statusCode).toBe(403);
+  });
+
+  it('GET /runners/:runnerId/tasks/claim returns 204 when authenticated runner has no queued task', async () => {
+    const suffix = `claim-empty-${Date.now().toString(36)}`;
+    const { runnerA, runnerSecretA } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/runners/${runnerA.id}/tasks/claim?timeout=1`,
+      headers: {
+        authorization: signRunnerAuth(runnerA.id, runnerSecretA)
+      }
+    });
+
+    expect(res.statusCode).toBe(204);
   });
 });
