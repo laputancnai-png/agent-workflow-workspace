@@ -92,4 +92,28 @@ describe('useSSEConnection', () => {
 
     expect(abortSignal?.aborted).toBe(true);
   });
+
+  it('backs off before reconnecting after failure', async () => {
+    vi.useFakeTimers();
+    fetchMock.mockRejectedValue(new Error('network down'));
+
+    renderHook(() => useSSEConnection('ws_1', 'token_abc'));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(useSSEStore.getState().status).toBe('reconnecting');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(999);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
 });

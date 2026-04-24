@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { queryClient } from '../lib/query-client.js';
 import { useSSEStore } from '../stores/sse.store.js';
 
@@ -45,12 +45,22 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
   const setStatus = useSSEStore((state) => state.setStatus);
   const setLastEventId = useSSEStore((state) => state.setLastEventId);
   const lastEventId = useSSEStore((state) => state.lastEventId);
+  const reconnectAttemptRef = useRef(0);
 
   useEffect(() => {
     if (!workspaceId || !token) return;
 
-    setStatus('connecting');
     const controller = new AbortController();
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleReconnect = () => {
+      reconnectAttemptRef.current += 1;
+      const delay = Math.min(1000 * 2 ** (reconnectAttemptRef.current - 1), 30_000);
+      setStatus('reconnecting');
+      reconnectTimer = setTimeout(() => {
+        void connect();
+      }, delay);
+    };
 
     const handleEvent = (eventId: string | undefined, rawData: string) => {
       if (eventId) setLastEventId(eventId);
@@ -71,8 +81,9 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
       }
     };
 
-    void (async () => {
+    const connect = async () => {
       try {
+        setStatus('connecting');
         const headers: Record<string, string> = {
           Accept: 'text/event-stream',
           Authorization: `Bearer ${token}`
@@ -106,6 +117,7 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
 
           if (!isOpen) {
             isOpen = true;
+            reconnectAttemptRef.current = 0;
             setStatus('open');
           }
 
@@ -117,16 +129,19 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
         }
 
         if (!controller.signal.aborted) {
-          setStatus('reconnecting');
+          scheduleReconnect();
         }
       } catch {
         if (!controller.signal.aborted) {
-          setStatus('reconnecting');
+          scheduleReconnect();
         }
       }
-    })();
+    };
+
+    void connect();
 
     return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       controller.abort();
       setStatus('idle');
     };

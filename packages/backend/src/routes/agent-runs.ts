@@ -3,11 +3,22 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { db } from '../db/index.js';
 import { agentRuns } from '../db/schema/runners.js';
+import { type RunnerRequest, requireRunner } from '../middleware/runner-auth.js';
 
 export const agentRunRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/agent-runs/:agentRunId/heartbeat', async (request) => {
+  app.addHook('preHandler', requireRunner);
+
+  app.post('/agent-runs/:agentRunId/heartbeat', async (request, reply) => {
     const { agentRunId } = request.params as { agentRunId: string };
     const body = request.body as { checkpoint_data?: Record<string, unknown> };
+    const runnerId = (request as RunnerRequest).runnerId;
+    const agentRun = await db.query.agentRuns.findFirst({
+      where: eq(agentRuns.id, agentRunId)
+    });
+
+    if (!agentRun || agentRun.runnerId !== runnerId) {
+      return reply.code(403).send({ error: 'forbidden_runner' });
+    }
 
     await db
       .update(agentRuns)
@@ -21,9 +32,17 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
     return { data: { ok: true } };
   });
 
-  app.post('/agent-runs/:agentRunId/complete', async (request) => {
+  app.post('/agent-runs/:agentRunId/complete', async (request, reply) => {
     const { agentRunId } = request.params as { agentRunId: string };
     const body = request.body as { output_artifact_ids?: string[] };
+    const runnerId = (request as RunnerRequest).runnerId;
+    const agentRun = await db.query.agentRuns.findFirst({
+      where: eq(agentRuns.id, agentRunId)
+    });
+
+    if (!agentRun || agentRun.runnerId !== runnerId) {
+      return reply.code(403).send({ error: 'forbidden_runner' });
+    }
 
     await db
       .update(agentRuns)
@@ -38,8 +57,16 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
     return { data: { ok: true } };
   });
 
-  app.post('/agent-runs/:agentRunId/fail', async (request) => {
+  app.post('/agent-runs/:agentRunId/fail', async (request, reply) => {
     const { agentRunId } = request.params as { agentRunId: string };
+    const runnerId = (request as RunnerRequest).runnerId;
+    const agentRun = await db.query.agentRuns.findFirst({
+      where: eq(agentRuns.id, agentRunId)
+    });
+
+    if (!agentRun || agentRun.runnerId !== runnerId) {
+      return reply.code(403).send({ error: 'forbidden_runner' });
+    }
 
     await db
       .update(agentRuns)
