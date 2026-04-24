@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { db } from '../db/index.js';
 import { decisions } from '../db/schema/decisions.js';
-import { workflowSteps } from '../db/schema/workflows.js';
+import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { publishEvent } from '../lib/sse.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
 import { applyDecision } from '../services/state-machine.js';
@@ -36,6 +36,10 @@ export const decisionRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'step_not_found' });
     }
 
+    const run = await db.query.workflowRuns.findFirst({
+      where: eq(workflowRuns.id, step.runId),
+    });
+
     const { newStepStatus, runEffect } = applyDecision(step.status, parsed.data.action);
 
     await db
@@ -55,7 +59,7 @@ export const decisionRoutes: FastifyPluginAsync = async (app) => {
       })
       .returning();
 
-    await publishEvent('step.status_changed', { stepId, status: newStepStatus, runEffect });
+    await publishEvent('step.status_changed', { stepId, status: newStepStatus, runEffect, run_id: step.runId }, run?.workspaceId);
 
     return reply.code(201).send({ data: decision });
   });

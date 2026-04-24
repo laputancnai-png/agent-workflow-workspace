@@ -14,6 +14,7 @@ interface GatewayMessage {
 }
 
 const OPENCLAW_ERROR_LABELS: Record<string, string> = {
+  rate_limit: 'Rate limit exceeded',
   auth_failed: 'Authentication failed - check api_key in config',
   invalid_model: 'Model not supported by this Gateway',
   context_length: 'Context length exceeded max_tokens',
@@ -38,7 +39,7 @@ export class OpenClawAdapter implements LLMProvider {
       const timer = setTimeout(() => {
         ws.terminate();
         resolve(false);
-      }, 500);
+      }, 2_000);
 
       ws.on('open', () => {
         clearTimeout(timer);
@@ -120,7 +121,7 @@ export class OpenClawAdapter implements LLMProvider {
 
           if (message.error) {
             const code = message.error.code ?? '';
-            reject(new Error(message.error.message ?? OPENCLAW_ERROR_LABELS[code] ?? 'unknown error'));
+            reject(new Error(OPENCLAW_ERROR_LABELS[code] ?? message.error.message ?? 'unknown error'));
             return;
           }
 

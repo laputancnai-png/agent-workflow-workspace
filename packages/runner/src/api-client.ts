@@ -84,15 +84,15 @@ export class RunnerApiClient {
   }
 
   async heartbeat(agentRunId: string, data: Record<string, unknown>) {
-    await this.request('POST', `/api/v1/runners/agent-runs/${agentRunId}/heartbeat`, data);
+    await this.request('POST', `/api/v1/agent-runs/${agentRunId}/heartbeat`, data);
   }
 
   async complete(agentRunId: string, data: Record<string, unknown>) {
-    await this.request('POST', `/api/v1/runners/agent-runs/${agentRunId}/complete`, data);
+    await this.request('POST', `/api/v1/agent-runs/${agentRunId}/complete`, data);
   }
 
   async fail(agentRunId: string, data: Record<string, unknown>) {
-    await this.request('POST', `/api/v1/runners/agent-runs/${agentRunId}/fail`, data);
+    await this.request('POST', `/api/v1/agent-runs/${agentRunId}/fail`, data);
   }
 
   async ackTask(taskId: string) {

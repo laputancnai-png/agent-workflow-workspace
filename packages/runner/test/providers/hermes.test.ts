@@ -28,6 +28,14 @@ describe('HermesAdapter', () => {
     expect(await adapter.isAvailable()).toBe(false);
   });
 
+  it('falls back to /health/detailed when /health is unavailable', async () => {
+    nock(baseUrl).get('/health').reply(503, { status: 'down' });
+    nock(baseUrl).get('/health/detailed').reply(200, { status: 'ok' });
+    const adapter = new HermesAdapter({ base_url: baseUrl });
+
+    expect(await adapter.isAvailable()).toBe(true);
+  });
+
   it('complete calls POST /v1/chat/completions and maps response', async () => {
     nock(baseUrl)
       .post('/v1/chat/completions')

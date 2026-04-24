@@ -12,6 +12,7 @@ interface AuthState {
   token: string | null;
   user: User | null;
   setAuth: (token: string, user: User) => void;
+  setToken: (token: string | null) => void;
   clearAuth: () => void;
 }
 
@@ -21,6 +22,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       user: null,
       setAuth: (token, user) => set({ token, user }),
+      setToken: (token) => set((state) => ({ ...state, token })),
       clearAuth: () => set({ token: null, user: null })
     }),
     { name: 'aww-auth' }

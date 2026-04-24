@@ -1,57 +1,95 @@
-import { act, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSSEConnection } from '../../src/hooks/useSSEConnection.js';
 import { useSSEStore } from '../../src/stores/sse.store.js';
 
-class MockEventSource {
-  static instances: MockEventSource[] = [];
+function createReader(chunks: string[], keepOpen = false) {
+  let index = 0;
 
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  listeners = new Map<string, (event: MessageEvent) => void>();
-  closed = false;
+  return {
+    read: vi.fn(async () => {
+      if (index >= chunks.length) {
+        if (keepOpen) {
+          return new Promise(() => undefined);
+        }
+        return { done: true, value: undefined };
+      }
 
-  constructor(public url: string) {
-    MockEventSource.instances.push(this);
-  }
-
-  addEventListener(type: string, fn: (event: MessageEvent) => void) {
-    this.listeners.set(type, fn);
-  }
-
-  close() {
-    this.closed = true;
-  }
-
-  simulateOpen() {
-    this.onopen?.();
-  }
+      const value = new TextEncoder().encode(chunks[index]);
+      index += 1;
+      return { done: false, value };
+    }),
+    releaseLock: vi.fn()
+  };
 }
 
-vi.stubGlobal('EventSource', MockEventSource);
-
-afterEach(() => {
-  MockEventSource.instances.length = 0;
-  useSSEStore.setState({ status: 'idle', lastEventId: null });
-});
-
 describe('useSSEConnection', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    window.fetch = fetchMock as typeof window.fetch;
+  });
+
+  afterEach(() => {
+    fetchMock.mockReset();
+    vi.unstubAllGlobals();
+    useSSEStore.setState({ status: 'idle', lastEventId: null });
+  });
+
   it('sets status to connecting on mount', () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      body: { getReader: () => createReader([]) }
+    });
+
     renderHook(() => useSSEConnection('ws_1', 'token_abc'));
     expect(useSSEStore.getState().status).toBe('connecting');
   });
 
-  it('sets status to open on EventSource open', () => {
-    renderHook(() => useSSEConnection('ws_1', 'token_abc'));
-    act(() => {
-      MockEventSource.instances[0]?.simulateOpen();
+  it('sends Authorization and Last-Event-ID headers and opens on first event', async () => {
+    useSSEStore.setState({ status: 'idle', lastEventId: 'evt-1' });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () =>
+          createReader(
+            ['id: evt-2\nevent: step.status_changed\ndata: {"event_type":"step.status_changed","run_id":"run_1"}\n\n'],
+            true
+          )
+      }
     });
-    expect(useSSEStore.getState().status).toBe('open');
+
+    renderHook(() => useSSEConnection('ws_1', 'token_abc'));
+
+    await waitFor(() => expect(useSSEStore.getState().status).toBe('open'));
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/workspaces/ws_1/events',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token_abc',
+          'Last-Event-ID': 'evt-1'
+        })
+      })
+    );
+    expect(useSSEStore.getState().lastEventId).toBe('evt-2');
   });
 
-  it('closes EventSource on unmount', () => {
+  it('aborts fetch on unmount', async () => {
+    let abortSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      abortSignal = init?.signal as AbortSignal;
+      return {
+        ok: true,
+        body: { getReader: () => createReader([]) }
+      };
+    });
+
     const { unmount } = renderHook(() => useSSEConnection('ws_1', 'token_abc'));
-    unmount();
-    expect(MockEventSource.instances[0]?.closed).toBe(true);
+    await act(async () => {
+      unmount();
+    });
+
+    expect(abortSignal?.aborted).toBe(true);
   });
 });

@@ -15,7 +15,7 @@ describe('RunnerApiClient', () => {
   it('includes Authorization header with HMAC scheme', async () => {
     let authHeader = '';
     nock(baseUrl)
-      .post('/api/v1/runners/agent-runs/ar_1/heartbeat')
+      .post('/api/v1/agent-runs/ar_1/heartbeat')
       .reply(function () {
         authHeader = this.req.headers.authorization as string;
         return [200, {}];
@@ -24,6 +24,20 @@ describe('RunnerApiClient', () => {
     await client.heartbeat('ar_1', { tokens_used: 10 });
 
     expect(authHeader).toMatch(/^Runner r_1:/);
+  });
+
+  it('uses top-level agent-run endpoints', async () => {
+    let called = false;
+    nock(baseUrl)
+      .post('/api/v1/agent-runs/ar_2/complete')
+      .reply(() => {
+        called = true;
+        return [200, {}];
+      });
+
+    await client.complete('ar_2', { output_artifact_ids: ['a_1'] });
+
+    expect(called).toBe(true);
   });
 
   it('pollTask returns null on 204', async () => {

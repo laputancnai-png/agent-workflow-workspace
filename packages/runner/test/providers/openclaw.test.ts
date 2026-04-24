@@ -128,7 +128,7 @@ describe('OpenClawAdapter', () => {
         messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 100,
       }),
-    ).rejects.toThrow('Too many requests');
+    ).rejects.toThrow('Rate limit exceeded');
   });
 
   it('includes api_key in connect params when configured', async () => {

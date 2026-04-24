@@ -16,6 +16,31 @@ interface RealtimeEvent {
   step_id?: string;
 }
 
+interface ParsedSSEEvent {
+  id?: string;
+  event?: string;
+  data: string;
+}
+
+function parseSSEChunk(chunk: string): ParsedSSEEvent[] {
+  return chunk
+    .split('\n\n')
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const parsed: ParsedSSEEvent = { data: '' };
+
+      for (const line of block.split('\n')) {
+        if (line.startsWith('id:')) parsed.id = line.slice(3).trim();
+        if (line.startsWith('event:')) parsed.event = line.slice(6).trim();
+        if (line.startsWith('data:')) parsed.data += line.slice(5).trim();
+      }
+
+      return parsed;
+    })
+    .filter((event) => event.data);
+}
+
 export function useSSEConnection(workspaceId: string, token: string | null): void {
   const setStatus = useSSEStore((state) => state.setStatus);
   const setLastEventId = useSSEStore((state) => state.setLastEventId);
@@ -25,19 +50,13 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
     if (!workspaceId || !token) return;
 
     setStatus('connecting');
-    const params = new URLSearchParams({ token });
-    if (lastEventId) params.set('lastEventId', lastEventId);
+    const controller = new AbortController();
 
-    const eventSource = new EventSource(`/api/v1/workspaces/${workspaceId}/events?${params.toString()}`);
-
-    eventSource.onopen = () => setStatus('open');
-    eventSource.onerror = () => setStatus('reconnecting');
-
-    const handleEvent = (event: MessageEvent) => {
-      if (event.lastEventId) setLastEventId(event.lastEventId);
+    const handleEvent = (eventId: string | undefined, rawData: string) => {
+      if (eventId) setLastEventId(eventId);
 
       try {
-        const payload = JSON.parse(event.data as string) as RealtimeEvent;
+        const payload = JSON.parse(rawData) as RealtimeEvent;
         if (payload.event_type === 'step.status_changed' && payload.run_id) {
           queryClient.invalidateQueries({ queryKey: ['run', payload.run_id] });
         }
@@ -52,10 +71,63 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
       }
     };
 
-    EVENT_TYPES.forEach((type) => eventSource.addEventListener(type, handleEvent));
+    void (async () => {
+      try {
+        const headers: Record<string, string> = {
+          Accept: 'text/event-stream',
+          Authorization: `Bearer ${token}`
+        };
+        if (lastEventId) headers['Last-Event-ID'] = lastEventId;
+
+        const response = await fetch(`/api/v1/workspaces/${workspaceId}/events`, {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+          credentials: 'include'
+        });
+
+        if (!response.ok || !response.body) {
+          setStatus('error');
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let isOpen = false;
+
+        while (!controller.signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const segments = buffer.split('\n\n');
+          buffer = segments.pop() ?? '';
+
+          if (!isOpen) {
+            isOpen = true;
+            setStatus('open');
+          }
+
+          for (const event of segments.flatMap(parseSSEChunk)) {
+            if (!event.event || EVENT_TYPES.includes(event.event)) {
+              handleEvent(event.id, event.data);
+            }
+          }
+        }
+
+        if (!controller.signal.aborted) {
+          setStatus('reconnecting');
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setStatus('reconnecting');
+        }
+      }
+    })();
 
     return () => {
-      eventSource.close();
+      controller.abort();
       setStatus('idle');
     };
   }, [lastEventId, setLastEventId, setStatus, token, workspaceId]);

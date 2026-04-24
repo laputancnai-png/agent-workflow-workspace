@@ -1,7 +1,10 @@
 import http from 'node:http';
 import https from 'node:https';
 
-export async function requestJson<T>(url: string, init: { method?: string; headers?: Record<string, string>; body?: unknown } = {}) {
+export async function requestJson<T>(
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: unknown; timeoutMs?: number } = {}
+) {
   return new Promise<T>((resolve, reject) => {
     const parsed = new URL(url);
     const client = parsed.protocol === 'https:' ? https : http;
@@ -36,6 +39,9 @@ export async function requestJson<T>(url: string, init: { method?: string; heade
     );
 
     request.on('error', reject);
+    request.setTimeout(init.timeoutMs ?? 120_000, () => {
+      request.destroy(new Error(`HTTP timeout for ${parsed.pathname}`));
+    });
     if (body) {
       request.write(body);
     }

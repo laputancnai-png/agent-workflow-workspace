@@ -2,7 +2,7 @@ import { and, eq, lt } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { agentRuns } from '../db/schema/runners.js';
-import { workflowSteps } from '../db/schema/workflows.js';
+import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { publishEvent } from '../lib/sse.js';
 import { agentRunTimedOut } from '../services/state-machine.js';
 
@@ -18,6 +18,14 @@ export async function scanTimedOutAgentRuns(now = new Date()) {
 
   for (const agentRun of timedOut) {
     const { newStepStatus } = agentRunTimedOut();
+    const step = await db.query.workflowSteps.findFirst({
+      where: eq(workflowSteps.id, agentRun.stepId)
+    });
+    const run = step
+      ? await db.query.workflowRuns.findFirst({
+          where: eq(workflowRuns.id, step.runId)
+        })
+      : null;
 
     await db
       .update(agentRuns)
@@ -33,7 +41,8 @@ export async function scanTimedOutAgentRuns(now = new Date()) {
       agentRunId: agentRun.id,
       stepId: agentRun.stepId,
       reason: 'timeout',
-    });
+      run_id: step?.runId,
+    }, run?.workspaceId);
   }
 
   return timedOut.length;
