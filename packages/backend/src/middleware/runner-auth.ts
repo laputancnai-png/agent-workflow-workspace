@@ -40,7 +40,16 @@ export async function requireRunner(request: FastifyRequest, reply: FastifyReply
   const provided = Buffer.from(signature, 'utf8');
   const expected = Buffer.from(expectedSignature, 'utf8');
 
-  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+  let signatureMatches = false;
+
+  try {
+    // HMAC-SHA256 hex digests are always 64 bytes here; catch keeps mismatched lengths on the same path.
+    signatureMatches = timingSafeEqual(provided, expected);
+  } catch {
+    signatureMatches = false;
+  }
+
+  if (!signatureMatches) {
     return reply.code(401).send({ error: 'invalid_runner_signature' });
   }
 

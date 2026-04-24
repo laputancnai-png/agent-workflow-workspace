@@ -23,13 +23,61 @@ afterAll(async () => {
   await app.close();
 });
 
-describe('Runner registration', () => {
+describe('Runner routes', () => {
   function signRunnerAuth(runnerId: string, runnerSecret: string, body?: unknown) {
     const payload = body === undefined ? '' : JSON.stringify(body);
     const signingKey = createHash('sha256').update(runnerSecret).digest('hex');
     const signature = createHmac('sha256', signingKey).update(payload).digest('hex');
 
     return `Runner ${runnerId}:${signature}`;
+  }
+
+  async function createRunnerScenario(suffix: string) {
+    const [user] = await db
+      .insert(users)
+      .values({ githubId: `gh-${suffix}`, login: `u-${suffix}`, email: `${suffix}@example.com` })
+      .returning();
+    const [workspace] = await db
+      .insert(workspaces)
+      .values({ slug: `ws-${suffix}`, name: `WS ${suffix}` })
+      .returning();
+    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' });
+    const [run] = await db
+      .insert(workflowRuns)
+      .values({ workspaceId: workspace.id, triggeredById: user.id, triggerType: 'manual', status: 'running' })
+      .returning();
+    const [step] = await db
+      .insert(workflowSteps)
+      .values({ runId: run.id, position: 1, name: 'Code', ownerType: 'agent', agentRole: 'coder', status: 'running' })
+      .returning();
+    const runnerSecretA = `runner-secret-a-${suffix}`;
+    const runnerSecretB = `runner-secret-b-${suffix}`;
+    const [runnerA] = await db
+      .insert(runners)
+      .values({
+        workspaceId: workspace.id,
+        machineId: `machine-a-${suffix}`,
+        secretHash: createHash('sha256').update(runnerSecretA).digest('hex'),
+        capabilities: ['coder'],
+        status: 'online'
+      })
+      .returning();
+    const [runnerB] = await db
+      .insert(runners)
+      .values({
+        workspaceId: workspace.id,
+        machineId: `machine-b-${suffix}`,
+        secretHash: createHash('sha256').update(runnerSecretB).digest('hex'),
+        capabilities: ['coder'],
+        status: 'online'
+      })
+      .returning();
+    const [agentRun] = await db
+      .insert(agentRuns)
+      .values({ stepId: step.id, runnerId: runnerA.id, status: 'running', agentRole: 'coder' })
+      .returning();
+
+    return { workspace, runnerA, runnerB, runnerSecretA, runnerSecretB, agentRun };
   }
 
   it('POST /runners/register returns 400 without valid token', async () => {
@@ -74,12 +122,13 @@ describe('Runner registration', () => {
       .insert(workflowSteps)
       .values({ runId: run.id, position: 1, name: 'Code', ownerType: 'agent', agentRole: 'coder', status: 'running' })
       .returning();
+    const runnerSecret = `runner-secret-${suffix}`;
     const [runner] = await db
       .insert(runners)
       .values({
         workspaceId: workspace.id,
         machineId: `machine-${suffix}`,
-        secretHash: 'hash',
+        secretHash: createHash('sha256').update(runnerSecret).digest('hex'),
         capabilities: ['coder'],
         status: 'online'
       })
@@ -99,50 +148,8 @@ describe('Runner registration', () => {
   });
 
   it('POST /agent-runs/:id/heartbeat rejects authenticated wrong runner with 403', async () => {
-    const suffix = `forbid-${Date.now().toString(36)}`;
-    const [user] = await db
-      .insert(users)
-      .values({ githubId: `gh-${suffix}`, login: `u-${suffix}`, email: `${suffix}@example.com` })
-      .returning();
-    const [workspace] = await db
-      .insert(workspaces)
-      .values({ slug: `ws-${suffix}`, name: `WS ${suffix}` })
-      .returning();
-    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' });
-    const [run] = await db
-      .insert(workflowRuns)
-      .values({ workspaceId: workspace.id, triggeredById: user.id, triggerType: 'manual', status: 'running' })
-      .returning();
-    const [step] = await db
-      .insert(workflowSteps)
-      .values({ runId: run.id, position: 1, name: 'Code', ownerType: 'agent', agentRole: 'coder', status: 'running' })
-      .returning();
-    const runnerSecretA = 'runner-secret-a';
-    const runnerSecretB = 'runner-secret-b';
-    const [runnerA] = await db
-      .insert(runners)
-      .values({
-        workspaceId: workspace.id,
-        machineId: `machine-a-${suffix}`,
-        secretHash: createHash('sha256').update(runnerSecretA).digest('hex'),
-        capabilities: ['coder'],
-        status: 'online'
-      })
-      .returning();
-    const [runnerB] = await db
-      .insert(runners)
-      .values({
-        workspaceId: workspace.id,
-        machineId: `machine-b-${suffix}`,
-        secretHash: createHash('sha256').update(runnerSecretB).digest('hex'),
-        capabilities: ['coder'],
-        status: 'online'
-      })
-      .returning();
-    const [agentRun] = await db
-      .insert(agentRuns)
-      .values({ stepId: step.id, runnerId: runnerA.id, status: 'running', agentRole: 'coder' })
-      .returning();
+    const suffix = `forbid-heartbeat-${Date.now().toString(36)}`;
+    const { runnerB, runnerSecretB, agentRun } = await createRunnerScenario(suffix);
     const body = { checkpoint_data: { phase: 'testing' } };
 
     const res = await app.inject({
@@ -152,6 +159,67 @@ describe('Runner registration', () => {
         authorization: signRunnerAuth(runnerB.id, runnerSecretB, body)
       },
       payload: body
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('POST /agent-runs/:id/complete rejects authenticated wrong runner with 403', async () => {
+    const suffix = `forbid-complete-${Date.now().toString(36)}`;
+    const { runnerB, runnerSecretB, agentRun } = await createRunnerScenario(suffix);
+    const body = { output_artifact_ids: ['artifact-1'] };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agent-runs/${agentRun.id}/complete`,
+      headers: {
+        authorization: signRunnerAuth(runnerB.id, runnerSecretB, body)
+      },
+      payload: body
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('POST /agent-runs/:id/fail rejects authenticated wrong runner with 403', async () => {
+    const suffix = `forbid-fail-${Date.now().toString(36)}`;
+    const { runnerB, runnerSecretB, agentRun } = await createRunnerScenario(suffix);
+    const body = { reason: 'boom' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agent-runs/${agentRun.id}/fail`,
+      headers: {
+        authorization: signRunnerAuth(runnerB.id, runnerSecretB, body)
+      },
+      payload: body
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('GET /runners/:runnerId/tasks/claim rejects missing runner auth', async () => {
+    const suffix = `claim-auth-${Date.now().toString(36)}`;
+    const { runnerA } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/runners/${runnerA.id}/tasks/claim?timeout=1`
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('GET /runners/:runnerId/tasks/claim rejects authenticated wrong runner with 403', async () => {
+    const suffix = `claim-forbid-${Date.now().toString(36)}`;
+    const { runnerA, runnerB, runnerSecretB } = await createRunnerScenario(suffix);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/runners/${runnerA.id}/tasks/claim?timeout=1`,
+      headers: {
+        authorization: signRunnerAuth(runnerB.id, runnerSecretB)
+      }
     });
 
     expect(res.statusCode).toBe(403);

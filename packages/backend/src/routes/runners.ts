@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { agentRuns, runners } from '../db/schema/runners.js';
 import { getRedis } from '../lib/redis.js';
+import { type RunnerRequest, requireRunner } from '../middleware/runner-auth.js';
 
 const registerSchema = z.object({
   registration_token: z.string().min(16),
@@ -51,8 +52,14 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
     return { data: { runner_id: runner.id, runner_secret: runnerSecret } };
   });
 
-  app.get('/:runnerId/tasks/claim', async (request, reply) => {
+  app.get('/:runnerId/tasks/claim', { preHandler: requireRunner }, async (request, reply) => {
     const { runnerId } = request.params as { runnerId: string };
+    const authenticatedRunnerId = (request as RunnerRequest).runnerId;
+
+    if (authenticatedRunnerId !== runnerId) {
+      return reply.code(403).send({ error: 'forbidden_runner' });
+    }
+
     const query = request.query as { timeout?: string };
     const timeoutSeconds = Math.min(Number.parseInt(query.timeout ?? '25', 10), 30);
     const redis = getRedis();
