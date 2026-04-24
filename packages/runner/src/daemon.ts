@@ -13,6 +13,9 @@ import { OpenAIAdapter } from './providers/openai.js';
 import { OpenClawAdapter } from './providers/openclaw.js';
 import { ProviderRegistry } from './providers/registry.js';
 import type { LLMProvider } from './providers/types.js';
+import { GitWorker } from './git-worker.js';
+import { redactSecrets } from './redact.js';
+import { RepoManager } from './repo-manager.js';
 
 export async function startDaemon(configPath?: string) {
   const cfg = await loadConfig(configPath ?? join(homedir(), '.aww', 'config.toml'));
@@ -39,6 +42,16 @@ export async function startDaemon(configPath?: string) {
     const heartbeat = new HeartbeatManager(client, task.agent_run_id);
     heartbeat.start();
     try {
+      let repoPath = process.cwd();
+      const featureBranch = task.feature_branch ?? task.default_branch;
+      if (task.repo_url && task.workspace_slug) {
+        const repoDir = join(homedir(), '.aww', 'repos', task.workspace_slug);
+        repoPath = await new RepoManager(repoDir, task.repo_url).prepare();
+        const lockId = task.run_id ?? task.agent_run_id;
+        const gitWorker = new GitWorker(repoPath, lockId);
+        await gitWorker.createFeatureBranch(featureBranch);
+      }
+
       const request: AgentRequest = {
         type: 'run',
         agent_run_id: task.agent_run_id,
@@ -48,8 +61,8 @@ export async function startDaemon(configPath?: string) {
         preferred_provider: task.preferred_provider,
         checkpoint_data: task.checkpoint_data,
         config: {
-          repo_path: process.cwd(),
-          feature_branch: '',
+          repo_path: repoPath,
+          feature_branch: featureBranch,
           max_tokens_budget: 200_000,
           providers: cfg.providers as Record<string, unknown>,
         },
@@ -62,13 +75,13 @@ export async function startDaemon(configPath?: string) {
       } else {
         await client.fail(task.agent_run_id, {
           error_code: response.error_code,
-          error_message: response.error_message,
+          error_message: redactSecrets(response.error_message ?? ''),
           retryable: response.retryable,
         });
       }
     } catch (error) {
       heartbeat.stop();
-      await client.fail(task.agent_run_id, { error_code: 'INTERNAL', error_message: String(error), retryable: true });
+      await client.fail(task.agent_run_id, { error_code: 'INTERNAL', error_message: redactSecrets(String(error)), retryable: true });
     }
   }
 

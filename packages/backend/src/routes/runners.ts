@@ -6,6 +6,8 @@ import { z } from 'zod';
 
 import { db } from '../db/index.js';
 import { agentRuns, runners } from '../db/schema/runners.js';
+import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
+import { workspaces } from '../db/schema/workspaces.js';
 import { getRedis } from '../lib/redis.js';
 import { type RunnerRequest, requireRunner } from '../middleware/runner-auth.js';
 
@@ -117,7 +119,40 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
         .where(eq(agentRuns.id, agentRunId))
         .returning();
 
-      return { data: updated };
+      // Resolve workspace context for the runner
+      const step = await db.query.workflowSteps.findFirst({
+        where: eq(workflowSteps.id, agentRun.stepId),
+      });
+      const run = step
+        ? await db.query.workflowRuns.findFirst({ where: eq(workflowRuns.id, step.runId) })
+        : null;
+      const workspace = run
+        ? await db.query.workspaces.findFirst({ where: eq(workspaces.id, run.workspaceId) })
+        : null;
+
+      // Generate and persist feature branch name on first agent run for this run
+      let featureBranch = run?.featureBranch ?? null;
+      if (!featureBranch && run && workspace) {
+        featureBranch = `aww/${workspace.slug}/${run.id.slice(0, 8)}`;
+        await db
+          .update(workflowRuns)
+          .set({ featureBranch, updatedAt: new Date() })
+          .where(eq(workflowRuns.id, run.id));
+      }
+
+      return {
+        data: {
+          ...updated,
+          workspace_id: workspace?.id ?? null,
+          workspace_slug: workspace?.slug ?? null,
+          repo_url: workspace?.githubRepoUrl ?? null,
+          default_branch: workspace?.defaultBranch ?? 'main',
+          run_id: run?.id ?? null,
+          feature_branch: featureBranch,
+          input_artifact_ids: [],
+          preferred_provider: workspace?.preferredProvider ?? 'anthropic',
+        },
+      };
     }
   );
 

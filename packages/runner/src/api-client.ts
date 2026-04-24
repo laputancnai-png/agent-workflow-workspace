@@ -9,6 +9,12 @@ export interface ClaimedTask {
   input_artifact_ids: string[];
   preferred_provider: string;
   checkpoint_data?: Record<string, unknown>;
+  workspace_id: string | null;
+  workspace_slug: string | null;
+  repo_url: string | null;
+  default_branch: string;
+  run_id: string | null;
+  feature_branch: string | null;
 }
 
 export class RunnerApiClient {
