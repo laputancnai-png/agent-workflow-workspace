@@ -22,29 +22,21 @@ interface ParsedSSEEvent {
   data: string;
 }
 
-function parseSSEChunk(chunk: string): ParsedSSEEvent[] {
-  return chunk
-    .split('\n\n')
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => {
-      const parsed: ParsedSSEEvent = { data: '' };
+function parseSSESegment(segment: string): ParsedSSEEvent | null {
+  const parsed: ParsedSSEEvent = { data: '' };
 
-      for (const line of block.split('\n')) {
-        if (line.startsWith('id:')) parsed.id = line.slice(3).trim();
-        if (line.startsWith('event:')) parsed.event = line.slice(6).trim();
-        if (line.startsWith('data:')) parsed.data += line.slice(5).trim();
-      }
+  for (const line of segment.split('\n')) {
+    if (line.startsWith('id:')) parsed.id = line.slice(3).trim();
+    if (line.startsWith('event:')) parsed.event = line.slice(6).trim();
+    if (line.startsWith('data:')) parsed.data += line.slice(5).trim();
+  }
 
-      return parsed;
-    })
-    .filter((event) => event.data);
+  return parsed.data ? parsed : null;
 }
 
 export function useSSEConnection(workspaceId: string, token: string | null): void {
   const setStatus = useSSEStore((state) => state.setStatus);
   const setLastEventId = useSSEStore((state) => state.setLastEventId);
-  const lastEventId = useSSEStore((state) => state.lastEventId);
   const reconnectAttemptRef = useRef(0);
 
   useEffect(() => {
@@ -88,7 +80,8 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
           Accept: 'text/event-stream',
           Authorization: `Bearer ${token}`
         };
-        if (lastEventId) headers['Last-Event-ID'] = lastEventId;
+        const currentLastEventId = useSSEStore.getState().lastEventId;
+        if (currentLastEventId) headers['Last-Event-ID'] = currentLastEventId;
 
         const response = await fetch(`/api/v1/workspaces/${workspaceId}/events`, {
           method: 'GET',
@@ -121,8 +114,9 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
             setStatus('open');
           }
 
-          for (const event of segments.flatMap(parseSSEChunk)) {
-            if (!event.event || EVENT_TYPES.includes(event.event)) {
+          for (const segment of segments.map((item) => item.trim()).filter(Boolean)) {
+            const event = parseSSESegment(segment);
+            if (event && (!event.event || EVENT_TYPES.includes(event.event))) {
               handleEvent(event.id, event.data);
             }
           }
@@ -145,5 +139,5 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
       controller.abort();
       setStatus('idle');
     };
-  }, [lastEventId, setLastEventId, setStatus, token, workspaceId]);
+  }, [setLastEventId, setStatus, token, workspaceId]);
 }

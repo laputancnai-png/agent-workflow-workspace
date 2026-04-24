@@ -1,5 +1,5 @@
 import { createId } from '@paralleldrive/cuid2';
-import bcrypt from 'bcrypt';
+import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -34,7 +34,7 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
 
     const { workspaceId } = JSON.parse(storedToken) as { workspaceId: string };
     const runnerSecret = `${createId()}${createId()}`;
-    const secretHash = await bcrypt.hash(runnerSecret, 10);
+    const secretHash = createHash('sha256').update(runnerSecret).digest('hex');
 
     const [runner] = await db
       .insert(runners)
@@ -78,49 +78,5 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
       .returning();
 
     return { data: updated };
-  });
-
-  app.post('/agent-runs/:agentRunId/heartbeat', async (request) => {
-    const { agentRunId } = request.params as { agentRunId: string };
-    const body = request.body as { checkpoint_data?: Record<string, unknown> };
-
-    await db
-      .update(agentRuns)
-      .set({
-        lastHeartbeatAt: new Date(),
-        checkpointData: body.checkpoint_data ?? {},
-        updatedAt: new Date(),
-      })
-      .where(eq(agentRuns.id, agentRunId));
-
-    return { data: { ok: true } };
-  });
-
-  app.post('/agent-runs/:agentRunId/complete', async (request) => {
-    const { agentRunId } = request.params as { agentRunId: string };
-    const body = request.body as { output_artifact_ids?: string[] };
-
-    await db
-      .update(agentRuns)
-      .set({
-        status: 'completed',
-        completedAt: new Date(),
-        updatedAt: new Date(),
-        outputPayloadRef: { artifact_ids: body.output_artifact_ids ?? [] },
-      })
-      .where(eq(agentRuns.id, agentRunId));
-
-    return { data: { ok: true } };
-  });
-
-  app.post('/agent-runs/:agentRunId/fail', async (request) => {
-    const { agentRunId } = request.params as { agentRunId: string };
-
-    await db
-      .update(agentRuns)
-      .set({ status: 'failed', updatedAt: new Date() })
-      .where(eq(agentRuns.id, agentRunId));
-
-    return { data: { ok: true } };
   });
 };

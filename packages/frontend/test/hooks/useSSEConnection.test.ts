@@ -116,4 +116,78 @@ describe('useSSEConnection', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
+
+  it('uses exponential backoff up to 30s and resets after success', async () => {
+    vi.useFakeTimers();
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    fetchMock
+      .mockRejectedValueOnce(new Error('down-1'))
+      .mockRejectedValueOnce(new Error('down-2'))
+      .mockRejectedValueOnce(new Error('down-3'))
+      .mockRejectedValueOnce(new Error('down-4'))
+      .mockRejectedValueOnce(new Error('down-5'))
+      .mockRejectedValueOnce(new Error('down-6'))
+      .mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () =>
+            createReader(['id: evt-9\nevent: step.status_changed\ndata: {"event_type":"step.status_changed","run_id":"run_ok"}\n\n'])
+        }
+      });
+
+    renderHook(() => useSSEConnection('ws_1', 'token_abc'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1999);
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    await act(async () => {
+      vi.advanceTimersByTime(16000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    await act(async () => {
+      vi.advanceTimersByTime(30000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(
+      timeoutSpy.mock.calls.map((call) => call[1]).filter((delay): delay is number => typeof delay === 'number')
+    ).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 1000]);
+    timeoutSpy.mockRestore();
+    vi.useRealTimers();
+  });
 });

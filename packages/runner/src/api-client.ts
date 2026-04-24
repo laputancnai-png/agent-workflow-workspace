@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 
@@ -15,7 +15,8 @@ export class RunnerApiClient {
   constructor(private readonly cfg: { base_url: string; runner_id: string; runner_secret: string }) {}
 
   private sign(body: string) {
-    const signature = createHmac('sha256', this.cfg.runner_secret).update(body).digest('hex');
+    const signingKey = createHash('sha256').update(this.cfg.runner_secret).digest('hex');
+    const signature = createHmac('sha256', signingKey).update(body).digest('hex');
 
     return `Runner ${this.cfg.runner_id}:${signature}`;
   }

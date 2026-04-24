@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 
@@ -18,8 +19,9 @@ export async function requireRunner(request: FastifyRequest, reply: FastifyReply
   const credentials = auth.slice(7);
   const separator = credentials.indexOf(':');
   const runnerId = separator > 0 ? credentials.slice(0, separator) : '';
+  const signature = separator > 0 ? credentials.slice(separator + 1) : '';
 
-  if (!runnerId) {
+  if (!runnerId || !signature) {
     return reply.code(401).send({ error: 'invalid_runner_auth' });
   }
 
@@ -29,6 +31,17 @@ export async function requireRunner(request: FastifyRequest, reply: FastifyReply
 
   if (!runner) {
     return reply.code(401).send({ error: 'unknown_runner' });
+  }
+
+  const bodyString =
+    request.body === undefined || request.body === null ? '' : JSON.stringify(request.body);
+  const expectedSignature = createHmac('sha256', runner.secretHash).update(bodyString).digest('hex');
+
+  const provided = Buffer.from(signature, 'utf8');
+  const expected = Buffer.from(expectedSignature, 'utf8');
+
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    return reply.code(401).send({ error: 'invalid_runner_signature' });
   }
 
   (request as RunnerRequest).runnerId = runnerId;

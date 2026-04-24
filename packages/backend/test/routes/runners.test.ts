@@ -1,3 +1,4 @@
+import { createHash, createHmac } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
@@ -23,6 +24,14 @@ afterAll(async () => {
 });
 
 describe('Runner registration', () => {
+  function signRunnerAuth(runnerId: string, runnerSecret: string, body?: unknown) {
+    const payload = body === undefined ? '' : JSON.stringify(body);
+    const signingKey = createHash('sha256').update(runnerSecret).digest('hex');
+    const signature = createHmac('sha256', signingKey).update(payload).digest('hex');
+
+    return `Runner ${runnerId}:${signature}`;
+  }
+
   it('POST /runners/register returns 400 without valid token', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -87,5 +96,64 @@ describe('Runner registration', () => {
     });
 
     expect(res.statusCode).toBe(401);
+  });
+
+  it('POST /agent-runs/:id/heartbeat rejects authenticated wrong runner with 403', async () => {
+    const suffix = `forbid-${Date.now().toString(36)}`;
+    const [user] = await db
+      .insert(users)
+      .values({ githubId: `gh-${suffix}`, login: `u-${suffix}`, email: `${suffix}@example.com` })
+      .returning();
+    const [workspace] = await db
+      .insert(workspaces)
+      .values({ slug: `ws-${suffix}`, name: `WS ${suffix}` })
+      .returning();
+    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' });
+    const [run] = await db
+      .insert(workflowRuns)
+      .values({ workspaceId: workspace.id, triggeredById: user.id, triggerType: 'manual', status: 'running' })
+      .returning();
+    const [step] = await db
+      .insert(workflowSteps)
+      .values({ runId: run.id, position: 1, name: 'Code', ownerType: 'agent', agentRole: 'coder', status: 'running' })
+      .returning();
+    const runnerSecretA = 'runner-secret-a';
+    const runnerSecretB = 'runner-secret-b';
+    const [runnerA] = await db
+      .insert(runners)
+      .values({
+        workspaceId: workspace.id,
+        machineId: `machine-a-${suffix}`,
+        secretHash: createHash('sha256').update(runnerSecretA).digest('hex'),
+        capabilities: ['coder'],
+        status: 'online'
+      })
+      .returning();
+    const [runnerB] = await db
+      .insert(runners)
+      .values({
+        workspaceId: workspace.id,
+        machineId: `machine-b-${suffix}`,
+        secretHash: createHash('sha256').update(runnerSecretB).digest('hex'),
+        capabilities: ['coder'],
+        status: 'online'
+      })
+      .returning();
+    const [agentRun] = await db
+      .insert(agentRuns)
+      .values({ stepId: step.id, runnerId: runnerA.id, status: 'running', agentRole: 'coder' })
+      .returning();
+    const body = { checkpoint_data: { phase: 'testing' } };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agent-runs/${agentRun.id}/heartbeat`,
+      headers: {
+        authorization: signRunnerAuth(runnerB.id, runnerSecretB, body)
+      },
+      payload: body
+    });
+
+    expect(res.statusCode).toBe(403);
   });
 });
