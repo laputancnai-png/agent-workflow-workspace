@@ -2,6 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { RunnerApiClient, type ClaimedTask } from './api-client.js';
+import { runCommand } from './agents/exec.js';
 import type { AgentRequest } from './agents/protocol.js';
 import { loadConfig } from './config.js';
 import { AgentExecutor } from './executor.js';
@@ -16,6 +17,17 @@ import type { LLMProvider } from './providers/types.js';
 import { GitWorker } from './git-worker.js';
 import { redactSecrets } from './redact.js';
 import { RepoManager } from './repo-manager.js';
+
+async function createPullRequest(repoPath: string, featureBranch: string, prSummary: string): Promise<void> {
+  const lines = prSummary.split('\n').filter(Boolean);
+  const title = (lines[0]?.replace(/^#+\s*/, '').trim() || featureBranch).replace(/'/g, "'\\''");
+  const body = (lines.slice(1).join('\n').trim() || prSummary).replace(/'/g, "'\\''");
+  const cmd = `gh pr create --title '${title}' --body '${body}' --head '${featureBranch}'`;
+  const result = await runCommand(cmd, repoPath);
+  if (!result.success) {
+    console.error('[daemon] gh pr create failed:', result.stderr);
+  }
+}
 
 export async function startDaemon(configPath?: string) {
   const cfg = await loadConfig(configPath ?? join(homedir(), '.aww', 'config.toml'));
@@ -71,7 +83,13 @@ export async function startDaemon(configPath?: string) {
       heartbeat.stop();
 
       if (response.type === 'complete') {
-        await client.complete(task.agent_run_id, { output_artifact_ids: [], tokens_used: response.tokens_used });
+        if (task.agent_role === 'summarizer' && response.output_artifacts?.length && task.feature_branch && repoPath) {
+          await createPullRequest(repoPath, task.feature_branch, response.output_artifacts[0].content);
+        }
+        await client.complete(task.agent_run_id, {
+          output_artifacts: response.output_artifacts,
+          tokens_used: response.tokens_used,
+        });
       } else {
         await client.fail(task.agent_run_id, {
           error_code: response.error_code,

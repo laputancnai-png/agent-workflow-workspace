@@ -94,7 +94,14 @@ export class RunnerApiClient {
     await this.request('POST', `/api/v1/agent-runs/${agentRunId}/heartbeat`, data);
   }
 
-  async complete(agentRunId: string, data: Record<string, unknown>) {
+  async complete(
+    agentRunId: string,
+    data: {
+      output_artifacts?: Array<{ role: string; content: string; git_commit_sha?: string }>;
+      output_artifact_ids?: string[];
+      tokens_used?: number;
+    },
+  ) {
     await this.request('POST', `/api/v1/agent-runs/${agentRunId}/complete`, data);
   }
 

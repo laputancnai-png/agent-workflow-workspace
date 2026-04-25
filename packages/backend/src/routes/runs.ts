@@ -1,8 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { db } from '../db/index.js';
+import { artifacts } from '../db/schema/artifacts.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
 import { BUILTIN_9STEP_TEMPLATE } from '../lib/templates.js';
@@ -75,6 +76,28 @@ export const runRoutes: FastifyPluginAsync = async (app) => {
 
     const steps = await db.select().from(workflowSteps).where(eq(workflowSteps.runId, runId));
 
-    return { data: { ...run, steps } };
+    const stepIds = steps.map((s) => s.id);
+    const stepArtifacts =
+      stepIds.length > 0
+        ? await db
+            .select({ id: artifacts.id, stepId: artifacts.stepId })
+            .from(artifacts)
+            .where(and(inArray(artifacts.stepId, stepIds), eq(artifacts.status, 'committed')))
+        : [];
+
+    const artifactsByStep = new Map<string, string[]>();
+    for (const art of stepArtifacts) {
+      if (!art.stepId) continue;
+      const existing = artifactsByStep.get(art.stepId) ?? [];
+      existing.push(art.id);
+      artifactsByStep.set(art.stepId, existing);
+    }
+
+    const stepsWithArtifacts = steps.map((step) => ({
+      ...step,
+      output_artifact_ids: artifactsByStep.get(step.id) ?? [],
+    }));
+
+    return { data: { ...run, steps: stepsWithArtifacts } };
   });
 };

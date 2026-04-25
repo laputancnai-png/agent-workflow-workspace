@@ -7,6 +7,7 @@ import { decisions } from '../db/schema/decisions.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { publishEvent } from '../lib/sse.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
+import { failRun, requeueStep, scheduleNextStep } from '../services/scheduler.js';
 import { applyDecision } from '../services/state-machine.js';
 
 const decisionSchema = z.object({
@@ -60,6 +61,14 @@ export const decisionRoutes: FastifyPluginAsync = async (app) => {
       .returning();
 
     await publishEvent('step.status_changed', { stepId, status: newStepStatus, runEffect, run_id: step.runId }, run?.workspaceId);
+
+    if (runEffect === 'advance' && run) {
+      await scheduleNextStep(step.runId, step.position);
+    } else if (runEffect === 'requeue_step') {
+      await requeueStep(stepId);
+    } else if (runEffect === 'fail_run' && run) {
+      await failRun(step.runId, run.workspaceId);
+    }
 
     return reply.code(201).send({ data: decision });
   });
