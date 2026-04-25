@@ -1,0 +1,9 @@
+{
+  "network_error": "网络错误，请检查连接",
+  "unauthorized": "登录已过期，请重新登录",
+  "forbidden": "无权执行此操作",
+  "not_found": "资源不存在",
+  "server_error": "服务器错误，请稍后重试",
+  "runner_offline": "Runner 不在线，无法执行 Agent 任务",
+  "sse_disconnected": "实时连接已断开，正在重连..."
+}

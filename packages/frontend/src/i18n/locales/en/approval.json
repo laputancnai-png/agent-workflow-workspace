@@ -1,0 +1,18 @@
+{
+  "approve": "Approve",
+  "reject": "Reject",
+  "request_changes": "Request Changes",
+  "edit_output": "Edit Output",
+  "take_over": "Take Over",
+  "rerun_step": "Rerun Step",
+  "approve_plan": "Approve Plan",
+  "decision_submitted": "Decision submitted",
+  "changes_requested": "Changes requested. Agent will re-run.",
+  "take_over_instructions": "Takeover Instructions",
+  "take_over_branch": "Local branch",
+  "take_over_hint": "Switch to the branch above in your local IDE, make your changes, then push. AWW will detect the new commit and resume the workflow.",
+  "finding_selector_title": "Select Issue Scope",
+  "finding_selector_placeholder": "Describe the issue to fix...",
+  "submit_changes": "Submit Change Request",
+  "submit_edit": "Submit Edit"
+}
