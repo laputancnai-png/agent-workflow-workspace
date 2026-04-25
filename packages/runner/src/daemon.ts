@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { RunnerApiClient, type ClaimedTask } from './api-client.js';
-import { runCommand } from './agents/exec.js';
+import { runSafe } from './agents/exec.js';
 import type { AgentRequest } from './agents/protocol.js';
 import { loadConfig } from './config.js';
 import { AgentExecutor } from './executor.js';
@@ -20,12 +20,11 @@ import { RepoManager } from './repo-manager.js';
 
 async function createPullRequest(repoPath: string, featureBranch: string, prSummary: string): Promise<void> {
   const lines = prSummary.split('\n').filter(Boolean);
-  const title = (lines[0]?.replace(/^#+\s*/, '').trim() || featureBranch).replace(/'/g, "'\\''");
-  const body = (lines.slice(1).join('\n').trim() || prSummary).replace(/'/g, "'\\''");
-  const cmd = `gh pr create --title '${title}' --body '${body}' --head '${featureBranch}'`;
-  const result = await runCommand(cmd, repoPath);
+  const title = lines[0]?.replace(/^#+\s*/, '').trim() || featureBranch;
+  const body = lines.slice(1).join('\n').trim() || prSummary;
+  const result = await runSafe('gh', ['pr', 'create', '--title', title, '--body', body, '--head', featureBranch], repoPath);
   if (!result.success) {
-    console.error('[daemon] gh pr create failed:', result.stderr);
+    process.stderr.write(`[daemon] gh pr create failed: ${result.stderr}\n`);
   }
 }
 

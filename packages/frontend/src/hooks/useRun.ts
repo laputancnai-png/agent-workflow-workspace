@@ -9,6 +9,7 @@ export interface WorkflowStep {
   owner_type: 'human' | 'agent' | 'approval_gate';
   agent_role?: string;
   output_artifact_ids: string[];
+  updated_at: string;
 }
 
 export interface WorkflowRun {

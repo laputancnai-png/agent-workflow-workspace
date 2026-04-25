@@ -56,7 +56,7 @@ export function RunDetailPage() {
         {activeStep?.agent_role && activeStep.status === 'running' ? (
           <AgentBanner
             agentRole={activeStep.agent_role}
-            startedAt={new Date()}
+            startedAt={new Date(activeStep.updated_at)}
             onRerun={() => handleDecision({ action: 'rerun' })}
             onTakeOver={openTakeOverModal}
           />

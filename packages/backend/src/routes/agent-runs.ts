@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { db } from '../db/index.js';
@@ -58,6 +58,10 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(403).send({ error: 'forbidden_runner' });
     }
 
+    if (agentRun.status !== 'running') {
+      return { data: { ok: true } };
+    }
+
     const createdArtifactIds: string[] = [];
     for (const art of body.output_artifacts ?? []) {
       const [artifact] = await db
@@ -78,7 +82,7 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
 
     const allArtifactIds = [...createdArtifactIds, ...(body.output_artifact_ids ?? [])];
 
-    await db
+    const [committed] = await db
       .update(agentRuns)
       .set({
         status: 'completed',
@@ -86,7 +90,12 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
         updatedAt: new Date(),
         outputPayloadRef: { artifact_ids: allArtifactIds }
       })
-      .where(eq(agentRuns.id, agentRunId));
+      .where(and(eq(agentRuns.id, agentRunId), eq(agentRuns.status, 'running')))
+      .returning();
+
+    if (!committed) {
+      return { data: { ok: true } };
+    }
 
     const step = await db.query.workflowSteps.findFirst({ where: eq(workflowSteps.id, agentRun.stepId) });
     if (step) {

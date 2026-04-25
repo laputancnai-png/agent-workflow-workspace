@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { agentRuns, runners } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { publishEvent } from '../lib/sse.js';
+import { requeueStep } from '../services/scheduler.js';
 import { agentRunTimedOut } from '../services/state-machine.js';
 
 const AGENT_RUN_TIMEOUT_SECONDS = 120;
@@ -63,6 +64,8 @@ export async function scanTimedOutAgentRuns(now = new Date()) {
       reason: 'timeout',
       run_id: step?.runId,
     }, run?.workspaceId);
+
+    await requeueStep(agentRun.stepId);
   }
 
   return timedOut.length;
