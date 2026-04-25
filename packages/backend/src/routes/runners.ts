@@ -1,8 +1,8 @@
 import { createId } from '@paralleldrive/cuid2';
 import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
 import { db } from '../db/index.js';
 import { agentRuns, runners } from '../db/schema/runners.js';
@@ -12,35 +12,31 @@ import { getRedis } from '../lib/redis.js';
 import { publishEvent } from '../lib/sse.js';
 import { type RunnerRequest, requireRunner } from '../middleware/runner-auth.js';
 
-const registerSchema = z.object({
+const registerBody = z.object({
   registration_token: z.string().min(16),
   machine_id: z.string().min(1),
   capabilities: z.array(z.string()),
 });
 
-interface ClaimTaskParams {
-  runnerId: string;
-}
+const runnerIdParams = z.object({
+  runnerId: z.string().min(1),
+});
 
-interface ClaimTaskQuerystring {
-  timeout?: string;
-}
+const claimQuerystring = z.object({
+  timeout: z.string().regex(/^\d+$/).optional(),
+});
 
-interface AckTaskParams {
-  runnerId: string;
-  agentRunId: string;
-}
+const ackParams = z.object({
+  runnerId: z.string().min(1),
+  agentRunId: z.string().min(1),
+});
 
-export const runnerRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/register', async (request, reply) => {
-    const parsed = registerSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      return reply.code(400).send({ error: 'invalid_registration_token' });
-    }
+export const runnerRoutes: FastifyPluginAsyncZod = async (app) => {
+  app.post('/register', { schema: { body: registerBody } }, async (request, reply) => {
+    const { registration_token, machine_id, capabilities } = request.body;
 
     const redis = getRedis();
-    const tokenKey = `runner:reg:${parsed.data.registration_token}`;
+    const tokenKey = `runner:reg:${registration_token}`;
     const storedToken = await redis.get(tokenKey);
 
     if (!storedToken) {
@@ -57,9 +53,9 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
       .insert(runners)
       .values({
         workspaceId,
-        machineId: parsed.data.machine_id,
+        machineId: machine_id,
         secretHash,
-        capabilities: parsed.data.capabilities,
+        capabilities,
         status: 'online',
         lastHeartbeatAt: new Date(),
       })
@@ -74,25 +70,14 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
     return { data: { runner_id: runner.id, runner_secret: runnerSecret } };
   });
 
-  app.get<{ Params: ClaimTaskParams; Querystring: ClaimTaskQuerystring }>(
+  app.get(
     '/:runnerId/tasks/claim',
     {
       preHandler: requireRunner,
       schema: {
-        params: {
-          type: 'object',
-          required: ['runnerId'],
-          properties: {
-            runnerId: { type: 'string', minLength: 1 }
-          }
-        },
-        querystring: {
-          type: 'object',
-          properties: {
-            timeout: { type: 'string', pattern: '^[0-9]+$' }
-          }
-        }
-      }
+        params: runnerIdParams,
+        querystring: claimQuerystring,
+      },
     },
     async (request, reply) => {
       const { runnerId } = request.params;
@@ -126,7 +111,6 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
         .where(eq(agentRuns.id, agentRunId))
         .returning();
 
-      // Resolve workspace context for the runner
       const step = await db.query.workflowSteps.findFirst({
         where: eq(workflowSteps.id, agentRun.stepId),
       });
@@ -137,7 +121,6 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
         ? await db.query.workspaces.findFirst({ where: eq(workspaces.id, run.workspaceId) })
         : null;
 
-      // Generate and persist feature branch name on first agent run for this run
       let featureBranch = run?.featureBranch ?? null;
       if (!featureBranch && run && workspace) {
         featureBranch = `aww/${workspace.slug}/${run.id.slice(0, 8)}`;
@@ -163,20 +146,11 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  app.post<{ Params: AckTaskParams }>(
+  app.post(
     '/:runnerId/tasks/:agentRunId/ack',
     {
       preHandler: requireRunner,
-      schema: {
-        params: {
-          type: 'object',
-          required: ['runnerId', 'agentRunId'],
-          properties: {
-            runnerId: { type: 'string', minLength: 1 },
-            agentRunId: { type: 'string', minLength: 1 }
-          }
-        }
-      }
+      schema: { params: ackParams },
     },
     async (request, reply) => {
       const { runnerId, agentRunId } = request.params;
@@ -202,17 +176,11 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  app.post<{ Params: { runnerId: string } }>(
+  app.post(
     '/:runnerId/heartbeat',
     {
       preHandler: requireRunner,
-      schema: {
-        params: {
-          type: 'object',
-          required: ['runnerId'],
-          properties: { runnerId: { type: 'string', minLength: 1 } }
-        }
-      }
+      schema: { params: runnerIdParams },
     },
     async (request, reply) => {
       const { runnerId } = request.params;

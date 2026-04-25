@@ -3,6 +3,7 @@ import 'dotenv/config';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 
 import { artifactRoutes } from './routes/artifacts.js';
 import { agentRunRoutes } from './routes/agent-runs.js';
@@ -18,6 +19,9 @@ export async function buildApp() {
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   });
+
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
 
   await app.register(cors, {
     origin: process.env.FRONTEND_URL,
