@@ -13,6 +13,28 @@ const createRunSchema = z.object({
   template_id: z.literal(BUILTIN_9STEP_TEMPLATE.id),
 });
 
+function serializeStep(step: typeof workflowSteps.$inferSelect, artifactIds: string[]) {
+  return {
+    id: step.id,
+    position: step.position,
+    name: step.name,
+    status: step.status,
+    owner_type: step.ownerType,
+    agent_role: step.agentRole ?? undefined,
+    output_artifact_ids: artifactIds,
+    updated_at: step.updatedAt.toISOString(),
+  };
+}
+
+function serializeRun(run: typeof workflowRuns.$inferSelect) {
+  return {
+    id: run.id,
+    workspace_id: run.workspaceId,
+    status: run.status,
+    feature_branch: run.featureBranch ?? undefined,
+  };
+}
+
 export const runRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireUser);
 
@@ -61,8 +83,17 @@ export const runRoutes: FastifyPluginAsync = async (app) => {
       )
       .returning();
 
-    return reply.code(201).send({ data: { ...run, steps } });
+    return reply.code(201).send({
+      data: {
+        ...serializeRun(run),
+        steps: steps.map((s) => serializeStep(s, [])),
+      },
+    });
   });
+};
+
+export const runDetailRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', requireUser);
 
   app.get('/runs/:runId', async (request, reply) => {
     const { runId } = request.params as { runId: string };
@@ -93,11 +124,11 @@ export const runRoutes: FastifyPluginAsync = async (app) => {
       artifactsByStep.set(art.stepId, existing);
     }
 
-    const stepsWithArtifacts = steps.map((step) => ({
-      ...step,
-      output_artifact_ids: artifactsByStep.get(step.id) ?? [],
-    }));
-
-    return { data: { ...run, steps: stepsWithArtifacts } };
+    return {
+      data: {
+        ...serializeRun(run),
+        steps: steps.map((s) => serializeStep(s, artifactsByStep.get(s.id) ?? [])),
+      },
+    };
   });
 };

@@ -50,8 +50,8 @@ test.describe('Full-stack: workflow run detail page', () => {
 
     await page.goto(`/w/${workspace.slug}/runs/${run.id}`);
 
-    // The first step is "Create workspace"
-    await expect(page.getByText('Create workspace')).toBeVisible({ timeout: 10_000 });
+    // The first step is "Create workspace" — target the timeline button specifically
+    await expect(page.locator('aside').getByText('Create workspace').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('shows ApprovalActionBar for the running approval_gate step and approves it', async ({ page }) => {
@@ -75,8 +75,8 @@ test.describe('Full-stack: workflow run detail page', () => {
     await injectAuthIntoPage(page, auth);
     await page.goto(`/w/${workspace.slug}/runs/${run.id}`);
 
-    // Select the running approval step in the timeline
-    await page.getByText('Import PRD').click();
+    // Select the running approval step in the timeline (target aside to avoid strict-mode violation with heading)
+    await page.locator('aside').getByText('Import PRD').first().click();
 
     // ApprovalActionBar should be visible because owner_type === 'approval_gate'
     const approveButton = page.getByRole('button', { name: 'Approve', exact: true });
