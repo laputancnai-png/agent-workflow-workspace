@@ -1,19 +1,21 @@
 import { useEffect, useRef } from 'react';
 import { queryClient } from '../lib/query-client.js';
 import { useSSEStore } from '../stores/sse.store.js';
+import type { RunnerStatusPayload } from '../stores/sse.store.js';
 
 const EVENT_TYPES = [
   'step.status_changed',
   'artifact.created',
   'agent_run.started',
   'agent_run.completed',
-  'agent_run.failed'
+  'agent_run.failed',
+  'runner.status_changed',
 ];
 
-interface RealtimeEvent {
+interface SSEEnvelope {
   event_type: string;
-  run_id?: string;
-  step_id?: string;
+  workspace_id?: string;
+  payload: Record<string, unknown>;
 }
 
 interface ParsedSSEEvent {
@@ -40,6 +42,7 @@ function parseSSESegment(segment: string): ParsedSSEEvent | null {
 export function useSSEConnection(workspaceId: string, token: string | null): void {
   const setStatus = useSSEStore((state) => state.setStatus);
   const setLastEventId = useSSEStore((state) => state.setLastEventId);
+  const setRunnerStatus = useSSEStore((state) => state.setRunnerStatus);
   const reconnectAttemptRef = useRef(0);
 
   useEffect(() => {
@@ -61,15 +64,21 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
       if (eventId) setLastEventId(eventId);
 
       try {
-        const payload = JSON.parse(rawData) as RealtimeEvent;
-        if (payload.event_type === 'step.status_changed' && payload.run_id) {
-          queryClient.invalidateQueries({ queryKey: ['run', payload.run_id] });
+        const envelope = JSON.parse(rawData) as SSEEnvelope;
+        const { event_type, payload } = envelope;
+        const runId = payload.run_id as string | undefined;
+
+        if (event_type === 'step.status_changed' && runId) {
+          queryClient.invalidateQueries({ queryKey: ['run', runId] });
         }
-        if (payload.event_type === 'artifact.created' && payload.run_id) {
-          queryClient.invalidateQueries({ queryKey: ['run', payload.run_id, 'artifacts'] });
+        if (event_type === 'artifact.created' && runId) {
+          queryClient.invalidateQueries({ queryKey: ['run', runId, 'artifacts'] });
         }
-        if (payload.event_type.startsWith('agent_run.') && payload.run_id) {
-          queryClient.invalidateQueries({ queryKey: ['run', payload.run_id] });
+        if (event_type.startsWith('agent_run.') && runId) {
+          queryClient.invalidateQueries({ queryKey: ['run', runId] });
+        }
+        if (event_type === 'runner.status_changed') {
+          setRunnerStatus(payload as unknown as RunnerStatusPayload);
         }
       } catch {
         // Ignore malformed realtime payloads; the next query refresh will reconcile state.
@@ -142,5 +151,5 @@ export function useSSEConnection(workspaceId: string, token: string | null): voi
       controller.abort();
       setStatus('idle');
     };
-  }, [setLastEventId, setStatus, token, workspaceId]);
+  }, [setLastEventId, setRunnerStatus, setStatus, token, workspaceId]);
 }

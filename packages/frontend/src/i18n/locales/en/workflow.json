@@ -25,6 +25,8 @@
   "audit_trail": "Audit Trail",
   "agent_running": "Agent Running",
   "may_not_respond": "May not respond",
+  "rerun": "Rerun",
+  "take_over": "Take Over",
   "no_runner": "No Runner online",
   "runner_connected": "Runner connected"
 }

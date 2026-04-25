@@ -1,16 +1,36 @@
 import { and, eq, lt } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { agentRuns } from '../db/schema/runners.js';
+import { agentRuns, runners } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { publishEvent } from '../lib/sse.js';
 import { agentRunTimedOut } from '../services/state-machine.js';
 
-const TIMEOUT_SECONDS = 120;
+const AGENT_RUN_TIMEOUT_SECONDS = 120;
+const RUNNER_HEARTBEAT_TIMEOUT_SECONDS = 60;
 const SCAN_INTERVAL_MS = 30_000;
 
+export async function scanTimedOutRunners(now = new Date()) {
+  const cutoff = new Date(now.getTime() - RUNNER_HEARTBEAT_TIMEOUT_SECONDS * 1000);
+  const stale = await db
+    .select()
+    .from(runners)
+    .where(and(eq(runners.status, 'online'), lt(runners.lastHeartbeatAt, cutoff)));
+
+  for (const runner of stale) {
+    await db.update(runners).set({ status: 'offline' }).where(eq(runners.id, runner.id));
+    await publishEvent(
+      'runner.status_changed',
+      { runner_id: runner.id, machine_id: runner.machineId, status: 'offline', capabilities: runner.capabilities },
+      runner.workspaceId,
+    );
+  }
+
+  return stale.length;
+}
+
 export async function scanTimedOutAgentRuns(now = new Date()) {
-  const cutoff = new Date(now.getTime() - TIMEOUT_SECONDS * 1000);
+  const cutoff = new Date(now.getTime() - AGENT_RUN_TIMEOUT_SECONDS * 1000);
   const timedOut = await db
     .select()
     .from(agentRuns)
@@ -50,7 +70,7 @@ export async function scanTimedOutAgentRuns(now = new Date()) {
 
 export function startWatchdog() {
   return setInterval(() => {
-    scanTimedOutAgentRuns().catch((error: unknown) => {
+    Promise.all([scanTimedOutAgentRuns(), scanTimedOutRunners()]).catch((error: unknown) => {
       console.error('[watchdog] error:', error);
     });
   }, SCAN_INTERVAL_MS);

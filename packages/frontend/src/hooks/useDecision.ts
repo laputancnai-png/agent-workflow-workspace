@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { getApiClient } from '../lib/api-client.js';
 
-export type DecisionAction = 'approve' | 'reject' | 'request_changes' | 'edit' | 'take_over';
+export type DecisionAction = 'approve' | 'reject' | 'request_changes' | 'edit' | 'take_over' | 'rerun';
 
 interface SubmitDecisionInput {
   stepId: string;

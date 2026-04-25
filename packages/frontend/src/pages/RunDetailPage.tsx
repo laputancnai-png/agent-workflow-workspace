@@ -19,6 +19,8 @@ export function RunDetailPage() {
   const selectStep = useUIStore((state) => state.selectStep);
   const { mutateAsync: submitDecision } = useSubmitDecision();
 
+  const openTakeOverModal = useUIStore((state) => state.openTakeOverModal);
+
   const activeStep =
     run?.steps.find((step) => step.id === selectedStepId) ??
     run?.steps.find((step) => step.status === 'running') ??
@@ -49,7 +51,12 @@ export function RunDetailPage() {
 
       <section className="min-w-0 overflow-auto p-6">
         {activeStep?.agent_role && activeStep.status === 'running' ? (
-          <AgentBanner agentRole={activeStep.agent_role} startedAt={new Date()} />
+          <AgentBanner
+            agentRole={activeStep.agent_role}
+            startedAt={new Date()}
+            onRerun={() => handleDecision({ action: 'rerun' })}
+            onTakeOver={openTakeOverModal}
+          />
         ) : null}
         <div className="mt-5">
           <h1 className="m-0 text-2xl font-semibold text-[var(--ink)]">{activeStep?.name ?? t('workflow:step')}</h1>

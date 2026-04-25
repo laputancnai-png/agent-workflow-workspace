@@ -9,6 +9,7 @@ import { agentRuns, runners } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaces } from '../db/schema/workspaces.js';
 import { getRedis } from '../lib/redis.js';
+import { publishEvent } from '../lib/sse.js';
 import { type RunnerRequest, requireRunner } from '../middleware/runner-auth.js';
 
 const registerSchema = z.object({
@@ -63,6 +64,12 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
         lastHeartbeatAt: new Date(),
       })
       .returning();
+
+    await publishEvent(
+      'runner.status_changed',
+      { runner_id: runner.id, machine_id: runner.machineId, status: 'online', capabilities: runner.capabilities },
+      workspaceId,
+    );
 
     return { data: { runner_id: runner.id, runner_secret: runnerSecret } };
   });
@@ -192,6 +199,49 @@ export const runnerRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return { data: agentRun };
+    }
+  );
+
+  app.post<{ Params: { runnerId: string } }>(
+    '/:runnerId/heartbeat',
+    {
+      preHandler: requireRunner,
+      schema: {
+        params: {
+          type: 'object',
+          required: ['runnerId'],
+          properties: { runnerId: { type: 'string', minLength: 1 } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const { runnerId } = request.params;
+      const authenticatedRunnerId = (request as RunnerRequest).runnerId;
+
+      if (authenticatedRunnerId !== runnerId) {
+        return reply.code(403).send({ error: 'forbidden_runner' });
+      }
+
+      const existing = await db.query.runners.findFirst({ where: eq(runners.id, runnerId) });
+      if (!existing) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
+
+      const [updated] = await db
+        .update(runners)
+        .set({ lastHeartbeatAt: new Date(), status: 'online' })
+        .where(eq(runners.id, runnerId))
+        .returning();
+
+      if (existing.status !== 'online') {
+        await publishEvent(
+          'runner.status_changed',
+          { runner_id: updated.id, machine_id: updated.machineId, status: 'online', capabilities: updated.capabilities },
+          updated.workspaceId,
+        );
+      }
+
+      return reply.code(204).send();
     }
   );
 };
