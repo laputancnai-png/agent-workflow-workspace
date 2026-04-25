@@ -13,5 +13,6 @@
   "take_over_hint": "在本地 IDE 中切换到上述分支，完成修改后推送，AWW 将自动检测并恢复工作流",
   "finding_selector_title": "选择问题范围",
   "finding_selector_placeholder": "描述需要修改的问题...",
-  "submit_changes": "提交修改请求"
+  "submit_changes": "提交修改请求",
+  "submit_edit": "提交编辑"
 }

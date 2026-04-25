@@ -5,13 +5,15 @@ import { useUIStore } from '../../stores/ui.store.js';
 
 interface ApprovalActionBarProps {
   stepId: string;
+  outputArtifactId?: string | null;
   onDecision: (opts: { action: DecisionAction; comment?: string }) => void;
 }
 
-export function ApprovalActionBar({ stepId: _stepId, onDecision }: ApprovalActionBarProps) {
+export function ApprovalActionBar({ stepId, outputArtifactId, onDecision }: ApprovalActionBarProps) {
   const { t } = useTranslation('approval');
   const openFindingSel = useUIStore((state) => state.openFindingSel);
   const openTakeOverModal = useUIStore((state) => state.openTakeOverModal);
+  const openEditOutput = useUIStore((state) => state.openEditOutput);
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -19,7 +21,7 @@ export function ApprovalActionBar({ stepId: _stepId, onDecision }: ApprovalActio
         {t('approve')}
       </Button>
       <Button onClick={openFindingSel}>{t('request_changes')}</Button>
-      <Button onClick={() => onDecision({ action: 'edit' })}>{t('edit_output')}</Button>
+      <Button onClick={() => openEditOutput(stepId, outputArtifactId ?? null)}>{t('edit_output')}</Button>
       <Button onClick={openTakeOverModal}>{t('take_over')}</Button>
       <Button variant="danger" onClick={() => onDecision({ action: 'reject' })}>
         {t('reject')}

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { showToast } from '../components/ui/Toast.js';
 import { ApprovalActionBar } from '../features/approval/ApprovalActionBar.js';
+import { EditOutputModal } from '../features/edit-output/EditOutputModal.js';
 import { FindingSel } from '../features/finding/FindingSel.js';
 import { TakeOverModal } from '../features/take-over/TakeOverModal.js';
 import { AgentBanner } from '../features/workflow-run/AgentBanner.js';
@@ -59,7 +60,11 @@ export function RunDetailPage() {
       <aside className="flex min-w-0 flex-col gap-3 border-l border-[var(--line)] p-4">
         <h2 className="m-0 text-sm font-semibold text-[var(--ink)]">{t('approval:approve_plan')}</h2>
         {activeStep?.owner_type === 'approval_gate' ? (
-          <ApprovalActionBar stepId={activeStep.id} onDecision={handleDecision} />
+          <ApprovalActionBar
+            stepId={activeStep.id}
+            outputArtifactId={activeStep.output_artifact_ids.at(-1) ?? null}
+            onDecision={handleDecision}
+          />
         ) : (
           <p className="m-0 text-sm text-[var(--muted)]">{t('workflow:step')}</p>
         )}
@@ -67,6 +72,7 @@ export function RunDetailPage() {
 
       <FindingSel onSubmit={(comment) => handleDecision({ action: 'request_changes', comment })} />
       <TakeOverModal stepId={activeStep?.id ?? ''} featureBranch={run.feature_branch ?? ''} />
+      <EditOutputModal />
     </div>
   );
 }
