@@ -8,6 +8,7 @@ import { TakeOverModal } from '../features/take-over/TakeOverModal.js';
 import { AgentBanner } from '../features/workflow-run/AgentBanner.js';
 import { WorkflowTimeline } from '../features/workflow-run/WorkflowTimeline.js';
 import { useSubmitDecision, type DecisionAction } from '../hooks/useDecision.js';
+import { useStepChangeNotifications } from '../hooks/useNotifications.js';
 import { useRun } from '../hooks/useRun.js';
 import { useUIStore } from '../stores/ui.store.js';
 
@@ -20,6 +21,8 @@ export function RunDetailPage() {
   const { mutateAsync: submitDecision } = useSubmitDecision();
 
   const openTakeOverModal = useUIStore((state) => state.openTakeOverModal);
+
+  useStepChangeNotifications(run?.steps);
 
   const activeStep =
     run?.steps.find((step) => step.id === selectedStepId) ??

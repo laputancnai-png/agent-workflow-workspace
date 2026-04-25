@@ -17,6 +17,13 @@ const createWorkspaceSchema = z.object({
   githubRepoUrl: z.string().url().optional(),
 });
 
+const updateWorkspaceSchema = z.object({
+  name: z.string().min(1).max(128).optional(),
+  githubRepoUrl: z.string().url().nullable().optional(),
+  defaultBranch: z.string().min(1).max(128).optional(),
+  preferredProvider: z.string().min(1).max(32).optional(),
+});
+
 export const workspaceRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireUser);
 
@@ -65,6 +72,56 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return { data: workspace };
+  });
+
+  app.patch('/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+    const parsed = updateWorkspaceSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_workspace', issues: parsed.error.issues });
+    }
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member || !['owner', 'admin'].includes(member.role)) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    const [updated] = await db
+      .update(workspaces)
+      .set({
+        updatedAt: new Date(),
+        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+        ...(parsed.data.githubRepoUrl !== undefined && { githubRepoUrl: parsed.data.githubRepoUrl }),
+        ...(parsed.data.defaultBranch !== undefined && { defaultBranch: parsed.data.defaultBranch }),
+        ...(parsed.data.preferredProvider !== undefined && { preferredProvider: parsed.data.preferredProvider }),
+      })
+      .where(eq(workspaces.id, id))
+      .returning();
+
+    if (!updated) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
+
+    return { data: updated };
+  });
+
+  app.delete('/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, id), eq(workspaceMembers.userId, userId)),
+    });
+
+    if (!member || member.role !== 'owner') {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    await db.delete(workspaces).where(eq(workspaces.id, id));
+    return reply.code(204).send();
   });
 
   app.get('/:id/runners', async (request, reply) => {

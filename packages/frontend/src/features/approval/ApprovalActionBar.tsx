@@ -16,16 +16,21 @@ export function ApprovalActionBar({ stepId, outputArtifactId, onDecision }: Appr
   const openEditOutput = useUIStore((state) => state.openEditOutput);
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <Button className="col-span-2" variant="primary" onClick={() => onDecision({ action: 'approve' })}>
+    <div className="flex flex-col gap-2">
+      <Button variant="primary" onClick={() => onDecision({ action: 'approve' })}>
         {t('approve')}
       </Button>
       <Button onClick={openFindingSel}>{t('request_changes')}</Button>
-      <Button onClick={() => openEditOutput(stepId, outputArtifactId ?? null)}>{t('edit_output')}</Button>
-      <Button onClick={openTakeOverModal}>{t('take_over')}</Button>
-      <Button variant="danger" onClick={() => onDecision({ action: 'reject' })}>
-        {t('reject')}
-      </Button>
+
+      <div className="hidden flex-col gap-2 sm:flex">
+        <div className="grid grid-cols-2 gap-2">
+          <Button onClick={() => openEditOutput(stepId, outputArtifactId ?? null)}>{t('edit_output')}</Button>
+          <Button onClick={openTakeOverModal}>{t('take_over')}</Button>
+        </div>
+        <Button variant="danger" onClick={() => onDecision({ action: 'reject' })}>
+          {t('reject')}
+        </Button>
+      </div>
     </div>
   );
 }
