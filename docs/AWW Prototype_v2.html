@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWW — Agent Workflow Workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;width:100%}
+body{font-family:'DM Sans',sans-serif;overflow:hidden}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.12);border-radius:99px}
+@keyframes pulse-ring{0%{transform:scale(0.85);opacity:0.7}100%{transform:scale(1.8);opacity:0}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes diffIn{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
+.anim-fade{animation:fadeIn 0.3s ease both}
+.anim-right{animation:slideRight 0.3s ease both}
+.anim-up{animation:slideUp 0.35s ease both}
+.diff-line{animation:diffIn 0.2s ease both}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useContext,createContext}=React;
+
+/* ─── THEME ─────────────────────────────────────────────────────── */
+const TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{
+  "theme": "amber",
+  "showLogs": true
+}/*EDITMODE-END*/;
+const TH={
+  amber:{name:'琥珀',p:'oklch(67% 0.19 55)',ph:'oklch(59% 0.21 55)',pl:'oklch(95% 0.06 70)',pb:'oklch(84% 0.11 65)',pt:'#fff',bgg:'linear-gradient(150deg,oklch(98% 0.004 78) 0%,oklch(95.5% 0.014 68) 100%)',ag:'oklch(63% 0.14 195)',agl:'oklch(93% 0.07 195)',ok:'oklch(61% 0.16 145)',okl:'oklch(93% 0.06 145)',er:'oklch(57% 0.22 25)',erl:'oklch(94% 0.06 25)',tx:'oklch(18% 0.01 75)',txm:'oklch(45% 0.01 75)',txs:'oklch(62% 0.01 75)',gl:'rgba(255,255,255,0.65)',glb:'rgba(255,255,255,0.88)',gls:'0 4px 28px rgba(0,0,0,0.07)',sb:'rgba(255,255,255,0.58)'},
+  violet:{name:'紫晶',p:'oklch(61% 0.23 285)',ph:'oklch(54% 0.25 285)',pl:'oklch(94% 0.06 285)',pb:'oklch(82% 0.10 285)',pt:'#fff',bgg:'linear-gradient(150deg,oklch(98% 0.003 288) 0%,oklch(95.5% 0.011 278) 100%)',ag:'oklch(63% 0.14 195)',agl:'oklch(93% 0.07 195)',ok:'oklch(61% 0.16 145)',okl:'oklch(93% 0.06 145)',er:'oklch(57% 0.22 25)',erl:'oklch(94% 0.06 25)',tx:'oklch(18% 0.01 285)',txm:'oklch(45% 0.01 285)',txs:'oklch(62% 0.01 285)',gl:'rgba(255,255,255,0.65)',glb:'rgba(255,255,255,0.88)',gls:'0 4px 28px rgba(60,0,140,0.06)',sb:'rgba(255,255,255,0.58)'},
+  slate:{name:'岩青',p:'oklch(53% 0.14 220)',ph:'oklch(46% 0.16 220)',pl:'oklch(94% 0.05 220)',pb:'oklch(82% 0.08 220)',pt:'#fff',bgg:'linear-gradient(150deg,oklch(98% 0.003 222) 0%,oklch(95% 0.009 215) 100%)',ag:'oklch(63% 0.14 195)',agl:'oklch(93% 0.07 195)',ok:'oklch(61% 0.16 145)',okl:'oklch(93% 0.06 145)',er:'oklch(57% 0.22 25)',erl:'oklch(94% 0.06 25)',tx:'oklch(17% 0.01 220)',txm:'oklch(44% 0.01 220)',txs:'oklch(62% 0.01 220)',gl:'rgba(255,255,255,0.65)',glb:'rgba(255,255,255,0.88)',gls:'0 4px 28px rgba(0,40,80,0.07)',sb:'rgba(255,255,255,0.58)'},
+};
+const TC=createContext(TH.amber);
+const useT=()=>useContext(TC);
+
+/* ─── LOGO ───────────────────────────────────────────────────────── */
+function Logo({size=32,showText=true}){
+  const t=useT();
+  const r=size*0.135,cx=size*0.12,cy=size*0.5,mx=size*0.5,my=size*0.5,rx=size*0.88,ry=size*0.5;
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:size*0.28}}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
+        <line x1={cx+r} y1={cy} x2={mx-r*1.5} y2={my} stroke={t.p} strokeWidth={size*0.044} strokeLinecap="round" opacity="0.4"/>
+        <line x1={mx+r*1.5} y1={my} x2={rx-r} y2={ry} stroke={t.p} strokeWidth={size*0.044} strokeLinecap="round" opacity="0.4"/>
+        <circle cx={cx} cy={cy} r={r} fill={t.agl} stroke={t.ag} strokeWidth={size*0.048}/>
+        <circle cx={mx} cy={my} r={r*1.38} fill={t.p}/>
+        <circle cx={mx} cy={my-r*0.28} r={r*0.44} fill={t.pt} opacity="0.95"/>
+        <path d={`M${mx-r*0.68} ${my+r*0.55} Q${mx-r*0.45} ${my+r*0.08} ${mx} ${my+r*0.08} Q${mx+r*0.45} ${my+r*0.08} ${mx+r*0.68} ${my+r*0.55}`} fill={t.pt} opacity="0.95"/>
+        <circle cx={rx} cy={ry} r={r} fill={t.okl} stroke={t.ok} strokeWidth={size*0.048}/>
+        <path d={`M${rx-r*0.48} ${ry} L${rx-r*0.08} ${ry+r*0.42} L${rx+r*0.52} ${ry-r*0.46}`} stroke={t.ok} strokeWidth={size*0.058} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      </svg>
+      {showText&&<span style={{fontWeight:700,fontSize:size*0.44,letterSpacing:-0.5,color:t.tx,lineHeight:1}}>AWW</span>}
+    </div>
+  );
+}
+
+/* ─── PRIMITIVES ─────────────────────────────────────────────────── */
+function Glass({children,style={},onClick}){
+  const t=useT();
+  return <div onClick={onClick} style={{background:t.gl,backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',border:`1px solid ${t.glb}`,boxShadow:t.gls,borderRadius:14,...style}}>{children}</div>;
+}
+function Btn({children,variant='primary',size='md',onClick,style={},disabled=false}){
+  const t=useT();const[h,sh]=useState(false);
+  const S={sm:{padding:'5px 11px',fontSize:12},md:{padding:'8px 16px',fontSize:13.5},lg:{padding:'11px 24px',fontSize:15}};
+  const V={
+    primary:{bg:h?t.ph:t.p,color:t.pt,brd:'none',shd:`0 2px 12px ${t.p}50`},
+    ghost:{bg:h?t.pl:'transparent',color:t.p,brd:`1px solid ${h?t.pb:'transparent'}`},
+    outline:{bg:h?'rgba(0,0,0,0.04)':'transparent',color:t.txm,brd:'1px solid rgba(0,0,0,0.11)'},
+    danger:{bg:h?t.erl:'transparent',color:t.er,brd:`1px solid ${h?t.er:'rgba(0,0,0,0.11)'}`},
+    agent:{bg:h?t.agl:'transparent',color:t.ag,brd:`1px solid ${h?t.ag:'rgba(0,0,0,0.11)'}`},
+    success:{bg:h?t.okl:t.ok,color:'#fff',brd:'none',shd:`0 2px 12px ${t.ok}50`},
+    icon:{bg:h?'rgba(0,0,0,0.07)':'rgba(0,0,0,0.04)',color:t.txm,brd:'1px solid rgba(0,0,0,0.08)'},
+  };
+  const v=V[variant]||V.primary;
+  return(
+    <button onMouseEnter={()=>sh(true)} onMouseLeave={()=>sh(false)} onClick={onClick} disabled={disabled} style={{
+      display:'inline-flex',alignItems:'center',justifyContent:'center',gap:5,
+      borderRadius:9,cursor:disabled?'not-allowed':'pointer',
+      fontFamily:'DM Sans,sans-serif',fontWeight:600,letterSpacing:-0.1,
+      transition:'all 0.13s ease',opacity:disabled?0.45:1,
+      background:v.bg,color:v.color,border:v.brd||'none',boxShadow:v.shd||'none',
+      ...S[size],...style
+    }}>{children}</button>
+  );
+}
+function Badge({children,color='gray'}){
+  const t=useT();
+  const C={green:{bg:t.okl,tx:t.ok},red:{bg:t.erl,tx:t.er},amber:{bg:t.pl,tx:t.p},teal:{bg:t.agl,tx:t.ag},gray:{bg:'oklch(92% 0.001 0)',tx:'oklch(52% 0.003 0)'},purple:{bg:'oklch(94% 0.05 285)',tx:'oklch(55% 0.18 285)'}};
+  const c=C[color]||C.gray;
+  return <span style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:5,fontSize:11,fontWeight:600,letterSpacing:0.1,background:c.bg,color:c.tx,flexShrink:0}}>{children}</span>;
+}
+function Dot({status}){
+  const t=useT();
+  const M={completed:{c:t.ok},running:{c:t.ag,pulse:true},waiting:{c:t.p,pulse:true},pending:{c:'oklch(80% 0.003 0)'},failed:{c:t.er}};
+  const s=M[status]||M.pending;
+  return(
+    <span style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center',width:10,height:10,flexShrink:0}}>
+      {s.pulse&&<span style={{position:'absolute',inset:-3,borderRadius:'50%',background:s.c,opacity:0.22,animation:'pulse-ring 1.6s ease-out infinite'}}/>}
+      <span style={{width:8,height:8,borderRadius:'50%',background:s.c}}/>
+    </span>
+  );
+}
+function OwnerTag({owner,role}){
+  const t=useT();
+  const rn={planner:'Planner',tasker:'Breakdown',coder:'Coding',tester:'Test',reviewer:'Review',summarizer:'Summarizer'};
+  return owner==='human'
+    ?<span style={{display:'inline-flex',alignItems:'center',gap:3,padding:'1px 7px',borderRadius:5,fontSize:10.5,fontWeight:700,background:t.pl,color:t.p,border:`1px solid ${t.pb}`,flexShrink:0}}>👤 人工</span>
+    :<span style={{display:'inline-flex',alignItems:'center',gap:3,padding:'1px 7px',borderRadius:5,fontSize:10.5,fontWeight:700,background:t.agl,color:t.ag,border:`1px solid ${t.ag}40`,flexShrink:0}}>🤖 {rn[role]||'Agent'}</span>;
+}
+
+/* ─── DATA ────────────────────────────────────────────────────────── */
+const STEP_DEFS=[
+  {id:1,name:'创建工作区',owner:'human',agentRole:null,desc:'项目初始化，连接 Git 仓库'},
+  {id:2,name:'导入 PRD',owner:'human',agentRole:null,desc:'撰写、粘贴或上传产品需求文档'},
+  {id:3,name:'生成工程计划',owner:'agent',agentRole:'planner',desc:'AI 规划器分析 PRD，输出实现方案'},
+  {id:4,name:'拆解任务列表',owner:'agent',agentRole:'tasker',desc:'将工程计划拆解为有边界的编码任务'},
+  {id:5,name:'Agent 实现',owner:'agent',agentRole:'coder',desc:'Coding Agent 串行执行任务，提交到 feature branch'},
+  {id:6,name:'运行测试',owner:'agent',agentRole:'tester',desc:'单测 · typecheck · lint · build'},
+  {id:7,name:'代码审查',owner:'agent',agentRole:'reviewer',desc:'对照 PRD 和验收标准审查 diff'},
+  {id:8,name:'最终人工审查',owner:'human',agentRole:null,desc:'人工审阅完整 diff、测试结果和审查发现'},
+  {id:9,name:'生成 PR 摘要',owner:'agent',agentRole:'summarizer',desc:'生成 PR 描述并推送到 GitHub'},
+];
+const FLOW_ST=[
+  null,null,
+  ['completed','waiting','pending','pending','pending','pending','pending','pending','pending'],
+  ['completed','completed','running','pending','pending','pending','pending','pending','pending'],
+  ['completed','completed','waiting','pending','pending','pending','pending','pending','pending'],
+  ['completed','completed','completed','running','pending','pending','pending','pending','pending'],
+  ['completed','completed','completed','completed','running','pending','pending','pending','pending'],
+  ['completed','completed','completed','completed','completed','running','pending','pending','pending'],
+  ['completed','completed','completed','completed','completed','completed','running','pending','pending'],
+  ['completed','completed','completed','completed','completed','completed','completed','waiting','pending'],
+  ['completed','completed','completed','completed','completed','completed','completed','completed','completed'],
+];
+const FLOW_META=[
+  {label:'空状态',hint:'首次打开',human:false},
+  {label:'创建向导',hint:'3步向导',human:true},
+  {label:'PRD确认',hint:'等待人工',human:true},
+  {label:'生成计划',hint:'Agent',human:false},
+  {label:'审批计划',hint:'等待人工',human:true},
+  {label:'任务拆解',hint:'Agent',human:false},
+  {label:'代码实现',hint:'Agent',human:false},
+  {label:'运行测试',hint:'Agent',human:false},
+  {label:'代码审查',hint:'Agent',human:false},
+  {label:'最终审查',hint:'等待人工',human:true},
+  {label:'PR完成',hint:'全部完成',human:false},
+];
+
+/* ─── DIFF DATA ───────────────────────────────────────────────────── */
+const DIFF_FILES=[
+  {name:'src/cart/CartService.ts',adds:68,dels:4,lines:[
+    {t:'ctx',n:44,c:'  private storage: Storage;'},
+    {t:'ctx',n:45,c:'  constructor(private api: ApiClient) {'},
+    {t:'ctx',n:46,c:'    this.storage = window.localStorage;'},
+    {t:'del',n:47,c:'-  async save() { }'},
+    {t:'add',n:null,c:'+  async persist(cart: Cart): Promise<void> {'},
+    {t:'add',n:null,c:'+    try {'},
+    {t:'add',n:null,c:"+      this.storage.setItem('cart', JSON.stringify(cart));"},
+    {t:'add',n:null,c:'+      await this.syncToServer(cart);'},
+    {t:'add',n:null,c:'+    } catch (e) {'},
+    {t:'add',n:null,c:"+      console.warn('Sync failed, local only', e);"},
+    {t:'add',n:null,c:'+    }'},
+    {t:'add',n:null,c:'+  }'},
+    {t:'ctx',n:60,c:'  async syncToServer(cart: Cart) {'},
+    {t:'ctx',n:61,c:"    return this.api.post('/cart/sync', cart);"},
+    {t:'ctx',n:62,c:'  }'},
+  ]},
+  {name:'src/api/cart.ts',adds:34,dels:0,lines:[
+    {t:'ctx',n:1,c:"import { Router } from 'express';"},
+    {t:'ctx',n:2,c:"import { auth } from '../middleware/auth';"},
+    {t:'ctx',n:3,c:''},
+    {t:'add',n:null,c:"+const router = Router();"},
+    {t:'add',n:null,c:"+router.post('/cart/sync', auth, async (req, res) => {"},
+    {t:'add',n:null,c:"+  const cart = req.body;"},
+    {t:'add',n:null,c:"+  await CartStore.save(req.user.id, cart);"},
+    {t:'add',n:null,c:"+  res.json({ ok: true });"},
+    {t:'add',n:null,c:"+});"},
+    {t:'add',n:null,c:"+export default router;"},
+  ]},
+  {name:'src/hooks/useCart.ts',adds:22,dels:3,lines:[
+    {t:'ctx',n:12,c:'  const [cart, setCart] = useState<Cart>(() => {'},
+    {t:'del',n:13,c:"-    return JSON.parse(localStorage.getItem('cart') || '[]');"},
+    {t:'add',n:null,c:"+    return cartService.loadFromStorage();"},
+    {t:'ctx',n:14,c:'  });'},
+    {t:'ctx',n:15,c:''},
+    {t:'del',n:16,c:'-  useEffect(() => { save(cart); }, [cart]);'},
+    {t:'add',n:null,c:'+  useEffect(() => {'},
+    {t:'add',n:null,c:'+    cartService.persist(cart);'},
+    {t:'add',n:null,c:'+  }, [cart, cartService]);'},
+  ]},
+];
+
+/* ─── FLOW NAVIGATOR ─────────────────────────────────────────────── */
+function FlowNav({state,setState}){
+  const t=useT();
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:0,padding:'9px 16px',background:t.sb,backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',borderBottom:`1px solid ${t.glb}`,overflowX:'auto',flexShrink:0}}>
+      <span style={{fontSize:10.5,fontWeight:700,color:t.txs,letterSpacing:0.5,marginRight:10,flexShrink:0}}>FLOW</span>
+      <div style={{display:'flex',alignItems:'center',gap:1}}>
+        {FLOW_META.map((m,i)=>{
+          const active=state===i+1;const done=state>i+1;
+          const accent=m.human?t.p:t.ag;
+          return(
+            <React.Fragment key={i}>
+              {i>0&&<div style={{width:12,height:1.5,background:done?t.ok:active?accent:'rgba(0,0,0,0.09)',transition:'background 0.2s',flexShrink:0}}/>}
+              <button onClick={()=>setState(i+1)} title={m.hint} style={{
+                display:'flex',flexDirection:'column',alignItems:'center',gap:2,padding:'3px 7px',
+                borderRadius:7,border:'none',cursor:'pointer',
+                background:active?(m.human?t.pl:t.agl):'transparent',
+                outline:active?`2px solid ${accent}`:'none',outlineOffset:1,
+                transition:'all 0.15s',flexShrink:0
+              }}>
+                <div style={{width:20,height:20,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:done?t.ok:active?accent:'rgba(0,0,0,0.08)',fontSize:9.5,fontWeight:700,color:done||active?'white':t.txs,transition:'all 0.2s'}}>
+                  {done?'✓':i+1}
+                </div>
+                <span style={{fontSize:9.5,fontWeight:active?700:400,color:active?accent:t.txs,whiteSpace:'nowrap'}}>{m.label}</span>
+              </button>
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <div style={{marginLeft:'auto',display:'flex',gap:7,paddingLeft:12,flexShrink:0,alignItems:'center'}}>
+        <span style={{fontSize:10,color:t.p,fontWeight:600,background:t.pl,border:`1px solid ${t.pb}`,borderRadius:4,padding:'2px 6px'}}>👤 人工</span>
+        <span style={{fontSize:10,color:t.ag,fontWeight:600,background:t.agl,border:`1px solid ${t.ag}40`,borderRadius:4,padding:'2px 6px'}}>🤖 Agent</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── AGENT LOG BANNER ───────────────────────────────────────────── */
+function Toast({msg,onDone}){const t=useT();useEffect(()=>{const id=setTimeout(onDone,3000);return()=>clearTimeout(id);},[]);return(<div style={{position:'fixed',bottom:72,left:'50%',transform:'translateX(-50%)',zIndex:300,padding:'10px 20px',borderRadius:10,background:t.ok,color:'white',fontSize:13,fontWeight:600,boxShadow:'0 4px 20px rgba(0,0,0,0.2)',animation:'slideUp 0.25s ease both',whiteSpace:'nowrap'}}>✓ {msg}</div>);}
+
+function PlaceholderModal({title,desc,onClose}){const t=useT();return(<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',backdropFilter:'blur(4px)',zIndex:150,display:'flex',alignItems:'center',justifyContent:'center'}}><Glass style={{width:420,padding:24,animation:'slideUp 0.3s ease both'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}><h3 style={{fontSize:15,fontWeight:700,color:t.tx}}>{title}</h3><button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:t.txs,fontSize:17}}>✕</button></div><div style={{padding:'14px',borderRadius:10,background:'rgba(0,0,0,0.04)',border:'1.5px dashed rgba(0,0,0,0.1)',textAlign:'center',marginBottom:16}}><div style={{fontSize:24,marginBottom:6}}>🚧</div><div style={{fontSize:13,color:t.txm,lineHeight:1.6}}>{desc}</div></div><Btn variant="outline" style={{width:'100%',justifyContent:'center'}} onClick={onClose}>关闭</Btn></Glass></div>);}
+
+function AgentBanner({role,logs=[]}){  
+  const t=useT();
+  const rn={planner:'Planner Agent',tasker:'Task Breakdown Agent',coder:'Coding Agent',tester:'Test Agent',reviewer:'Review Agent',summarizer:'Summarizer Agent'};
+  const[tick,st]=useState(0);const[warn,sw]=useState(false);
+  useEffect(()=>{const id=setInterval(()=>st(x=>{if(x+1>=90)sw(true);return x+1;}),1000);return()=>clearInterval(id);},[]);  
+  return(
+    <div style={{padding:'11px 13px',borderRadius:10,background:t.agl,border:`1px solid ${t.ag}35`,marginBottom:10}}>
+      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:8}}>
+        <span style={{width:8,height:8,borderRadius:'50%',background:t.ag,animation:'pulse-ring 1.5s ease-out infinite',flexShrink:0}}/>
+        <span style={{fontSize:12.5,fontWeight:700,color:t.ag}}>{rn[role]||'Agent'} 运行中</span>
+        <span style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:5}}>{warn&&<span style={{fontSize:10,fontWeight:700,color:t.er,background:t.erl,padding:'1px 6px',borderRadius:4,animation:'pulse-ring 1.5s ease-out infinite'}}>⚠ 可能无响应</span>}<span style={{fontSize:10,color:t.txs,fontFamily:'JetBrains Mono,monospace'}}>{tick}s / 90s</span></span>
+      </div>
+      <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:10.5,color:t.txm,lineHeight:1.8}}>
+        {logs.map((l,i)=><div key={i} style={{display:'flex',gap:5,opacity:i===logs.length-1?1:0.5}}><span style={{color:t.ag}}>{i===logs.length-1?'▶':'✓'}</span><span>{l}</span></div>)}
+        <span style={{color:t.ag,animation:'blink 1s step-end infinite'}}>█</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP ROW ────────────────────────────────────────────────────── */
+function StepRow({step,active}){
+  const t=useT();const[h,sh]=useState(false);
+  const accent=step.owner==='human'?t.p:t.ag;
+  return(
+    <div style={{display:'flex',alignItems:'stretch',gap:0}}>
+      <div style={{width:3,borderRadius:99,flexShrink:0,marginRight:9,background:step.status==='pending'?'rgba(0,0,0,0.06)':accent,transition:'background 0.2s'}}/>
+      <div onMouseEnter={()=>sh(true)} onMouseLeave={()=>sh(false)} style={{
+        flex:1,padding:'10px 12px',borderRadius:11,marginBottom:6,
+        background:active?t.gl:h?'rgba(255,255,255,0.45)':'rgba(255,255,255,0.25)',
+        border:`1.5px solid ${active?(step.owner==='human'?t.pb:t.ag+'55'):'rgba(255,255,255,0.7)'}`,
+        backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',
+        boxShadow:active?t.gls:'none',transition:'all 0.13s',
+      }}>
+        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:2}}>
+          <Dot status={step.status}/>
+          <span style={{fontSize:12.5,fontWeight:600,color:step.status==='pending'?t.txs:t.tx}}>{step.name}</span>
+          <OwnerTag owner={step.owner} role={step.agentRole}/>
+          {step.status==='waiting'&&<Badge color="amber">⚡ 待决策</Badge>}
+          {step.status==='running'&&<Badge color="teal">⟳ 运行中</Badge>}
+          {step.status==='completed'&&<Badge color="green">✓</Badge>}
+        </div>
+        <div style={{fontSize:11,color:t.txs,paddingLeft:16,lineHeight:1.45}}>{step.desc}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── PANEL WRAPPER (handles fullscreen) ─────────────────────────── */
+function PanelWrapper({children,title,badge,onClose,fullscreen,setFullscreen,mobileBtn,onMobile}){
+  const t=useT();
+  const container={
+    background:t.gl,backdropFilter:'blur(22px)',WebkitBackdropFilter:'blur(22px)',
+    borderLeft:`1px solid ${t.glb}`,display:'flex',flexDirection:'column',overflow:'hidden',
+    transition:'all 0.2s ease',
+  };
+  if(fullscreen){
+    Object.assign(container,{position:'absolute',inset:0,zIndex:30,borderLeft:'none',borderRadius:0});
+  } else {
+    Object.assign(container,{flex:1,minWidth:0});
+  }
+  return(
+    <div className="anim-right" style={container}>
+      {/* panel header */}
+      <div style={{padding:'14px 18px 10px',borderBottom:`1px solid rgba(0,0,0,0.07)`,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+        <div style={{flex:1,display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
+          {title&&<span style={{fontSize:14.5,fontWeight:700,color:t.tx}}>{title}</span>}
+          {badge}
+        </div>
+        <div style={{display:'flex',gap:5}}>
+          {mobileBtn&&(
+            <Btn variant="icon" size="sm" onClick={onMobile} style={{borderRadius:7,padding:'5px 8px',fontSize:13}}>
+              📱
+            </Btn>
+          )}
+          <Btn variant="icon" size="sm" onClick={()=>setFullscreen(f=>!f)} style={{borderRadius:7,padding:'5px 8px',fontSize:13}} title={fullscreen?'缩回':'全屏'}>
+            {fullscreen?'⊡':'⊞'}
+          </Btn>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ─── DIFF VIEWER ────────────────────────────────────────────────── */
+function DiffViewer(){
+  const t=useT();
+  const[fileIdx,sfi]=useState(0);
+  const f=DIFF_FILES[fileIdx];
+  const lineColor={add:'rgba(61,175,100,0.12)',del:'rgba(220,70,70,0.10)',ctx:'transparent'};
+  const lineTextColor={add:t.ok,del:t.er,ctx:t.txm};
+  return(
+    <div style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
+      {/* file tabs */}
+      <div style={{display:'flex',gap:0,padding:'0 16px',borderBottom:`1px solid rgba(0,0,0,0.07)`,background:'rgba(255,255,255,0.3)',overflowX:'auto',flexShrink:0}}>
+        {DIFF_FILES.map((df,i)=>(
+          <button key={i} onClick={()=>sfi(i)} style={{
+            display:'flex',alignItems:'center',gap:6,
+            padding:'8px 12px',border:'none',cursor:'pointer',
+            background:'transparent',
+            borderBottom:`2px solid ${fileIdx===i?t.p:'transparent'}`,
+            color:fileIdx===i?t.p:t.txm,fontSize:11.5,fontWeight:fileIdx===i?600:400,
+            fontFamily:'JetBrains Mono,monospace',whiteSpace:'nowrap',
+            transition:'all 0.13s',marginBottom:-1,
+          }}>
+            <span>{df.name.split('/').pop()}</span>
+            <span style={{fontSize:10,color:t.ok,fontWeight:700}}>+{df.adds}</span>
+            {df.dels>0&&<span style={{fontSize:10,color:t.er,fontWeight:700}}>-{df.dels}</span>}
+          </button>
+        ))}
+      </div>
+      {/* file path bar */}
+      <div style={{padding:'6px 16px',background:'rgba(0,0,0,0.03)',borderBottom:'1px solid rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+        <span style={{fontSize:10.5,fontFamily:'JetBrains Mono,monospace',color:t.txs}}>{f.name}</span>
+        <Badge color="green">+{f.adds}</Badge>
+        {f.dels>0&&<Badge color="red">-{f.dels}</Badge>}
+      </div>
+      {/* diff lines */}
+      <div style={{flex:1,overflow:'auto',background:'oklch(16% 0.008 220)'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontFamily:'JetBrains Mono,monospace',fontSize:11.5}}>
+          <tbody>
+            {f.lines.map((l,i)=>(
+              <tr key={i} className="diff-line" style={{background:l.t==='add'?'rgba(61,175,100,0.13)':l.t==='del'?'rgba(220,70,70,0.12)':'transparent',animationDelay:`${i*0.02}s`}}>
+                <td style={{width:36,paddingLeft:10,paddingRight:4,userSelect:'none',color:'oklch(40% 0.01 220)',fontSize:10,textAlign:'right',verticalAlign:'top',paddingTop:3}}>
+                  {l.t==='ctx'?l.n:''}
+                </td>
+                <td style={{width:14,paddingRight:6,color:l.t==='add'?t.ok:l.t==='del'?t.er:'oklch(40% 0.01 220)',userSelect:'none',verticalAlign:'top',paddingTop:3}}>
+                  {l.t==='add'?'+':l.t==='del'?'-':' '}
+                </td>
+                <td style={{paddingRight:16,paddingTop:3,paddingBottom:3,color:l.t==='add'?'oklch(82% 0.09 145)':l.t==='del'?'oklch(80% 0.10 25)':'oklch(78% 0.04 195)',whiteSpace:'pre',lineHeight:1.7}}>
+                  {l.c.replace(/^[+\- ]/,'')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─── PANELS ─────────────────────────────────────────────────────── */
+function PanelPRDConfirm({onAdvance,full,setFull,onMobile}){
+  const t=useT();
+  return(
+    <PanelWrapper title="导入 PRD" badge={<><OwnerTag owner="human"/><Badge color="amber">⚡ 待确认</Badge></>} fullscreen={full} setFullscreen={setFull} mobileBtn onMobile={onMobile}>
+      <div style={{flex:1,overflow:'auto',padding:'14px 18px'}}>
+        <div style={{fontSize:11,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:8}}>PRD 预览</div>
+        <div style={{padding:'12px 14px',borderRadius:10,background:'rgba(255,255,255,0.55)',border:'1px solid rgba(0,0,0,0.07)',fontSize:12,color:t.tx,lineHeight:1.75,fontFamily:'JetBrains Mono,monospace'}}>
+          {'# 购物车持久化\n\n## 目标\n用户刷新页面后购物车内容应保留。\n\n## 验收标准\n- 刷新后购物车完整\n- 同步失败显示错误提示\n- 离线状态本地存储兜底\n\n## 影响模块\nsrc/cart/, src/api/cart.ts'}
+        </div>
+      </div>
+      <div style={{padding:'14px 18px',borderTop:`1px solid rgba(0,0,0,0.07)`}}>
+        <div style={{padding:'10px 12px',borderRadius:10,background:t.pl,border:`1.5px solid ${t.pb}`,marginBottom:12,fontSize:12,color:t.txm}}>
+          <span style={{fontWeight:700,color:t.p}}>👤 确认后 Planner Agent 开始规划</span>
+        </div>
+        <Btn style={{width:'100%',justifyContent:'center',marginBottom:7}} size="lg" onClick={onAdvance}>✓ 确认 PRD 就绪</Btn>
+        <Btn variant="danger" style={{width:'100%',justifyContent:'center'}} onClick={()=>confirm('确认拒绝？工作流将不会继续。')}>✕ 拒绝，不继续</Btn>
+      </div>
+    </PanelWrapper>
+  );
+}
+
+function PanelAgentRunning({role,nextStep,full,setFull}){
+  const t=useT();
+  const logsMap={
+    planner:['Loading PRD artifact…','Scanning repo: 48 files','Calling claude-sonnet-4-6…','Drafting implementation approach…'],
+    tasker:['Reading PLAN artifact…','Identifying file boundaries…','Creating 4 scoped tasks…'],
+    test:['npm run test -- --coverage','npm run typecheck','npm run lint','Collecting results…'],
+    review:['Diffing feature branch vs main…','Analyzing 312 changed lines','Cross-referencing with PRD…'],
+    summarizer:['Reading CODE_PATCH…','Reading TEST_REPORT…','Generating PR description…'],
+  };
+  return(
+    <PanelWrapper title={`${role==='planner'?'生成工程计划':role==='tasker'?'拆解任务列表':role==='tester'?'运行测试':role==='reviewer'?'代码审查':'生成 PR 摘要'}`} badge={<OwnerTag owner="agent" role={role}/>} fullscreen={full} setFullscreen={setFull}>
+      <div style={{flex:1,overflow:'auto',padding:'14px 18px'}}>
+        <AgentBanner role={role} logs={logsMap[role]||[]}/>
+        <div style={{padding:'10px 12px',borderRadius:9,background:'rgba(255,255,255,0.5)',border:'1px solid rgba(0,0,0,0.07)',fontSize:12,color:t.txm,lineHeight:1.6}}>
+          <span style={{fontWeight:600,color:t.ag}}>工作流将自动继续</span><br/>
+          完成后推进到{nextStep||'下一步'}，你会收到通知。
+        </div>
+      </div>
+    </PanelWrapper>
+  );
+}
+
+function PanelPlanApproval({onAdvance,onRequest,onTakeOver,full,setFull,onMobile}){
+  const t=useT();const[tab,st]=useState('content');
+  const PLAN=`## 实现方案\n\n### 技术路径\n1. CartService 增加本地 + 服务端双写\n2. 新增 POST /api/cart/sync\n3. localStorage 离线回退\n\n### 影响文件\n- src/cart/CartService.ts\n- src/api/cart.ts\n- src/hooks/useCart.ts\n- src/pages/CheckoutPage.tsx\n\n### 风险\n并发同步冲突（低，单用户场景）\n\n### 测试策略\n单测 CartService + E2E checkout 主流程`;
+  return(
+    <PanelWrapper title="生成工程计划" badge={<><OwnerTag owner="agent" role="planner"/><Badge color="amber">⚡ 待审批</Badge></>} fullscreen={full} setFullscreen={setFull} mobileBtn onMobile={onMobile}>
+      <div style={{display:'flex',gap:0,padding:'0 18px',borderBottom:`1.5px solid rgba(0,0,0,0.07)`,background:'rgba(255,255,255,0.25)',flexShrink:0}}>
+        {[['content','计划内容'],['artifacts','产物'],['logs','日志']].map(([k,l])=>(
+          <button key={k} onClick={()=>st(k)} style={{padding:'7px 12px',border:'none',cursor:'pointer',background:'transparent',fontSize:12,fontWeight:600,color:tab===k?t.p:t.txs,borderBottom:`2px solid ${tab===k?t.p:'transparent'}`,transition:'all 0.13s',marginBottom:-1.5}}>{l}</button>
+        ))}
+      </div>
+      <div style={{flex:1,overflow:'auto',padding:'14px 18px'}}>
+        {tab==='content'&&<div className="anim-fade" style={{fontFamily:'JetBrains Mono,monospace',fontSize:11.5,color:t.tx,lineHeight:1.75,whiteSpace:'pre-wrap'}}>{PLAN}</div>}
+        {tab==='artifacts'&&(
+          <div className="anim-fade" style={{display:'flex',flexDirection:'column',gap:8}}>
+            {[{role:'PLAN',title:'工程实现计划 v1',size:'2.1 KB',time:'刚刚'},{role:'PRD',title:'购物车持久化需求文档',size:'4.8 KB',time:'9 分钟前'}].map((a,i)=>(
+              <div key={i} style={{padding:'11px 13px',borderRadius:10,background:'rgba(255,255,255,0.6)',border:'1px solid rgba(0,0,0,0.07)'}}>
+                <Badge color={a.role==='PLAN'?'amber':'gray'}>{a.role}</Badge>
+                <div style={{fontSize:13,fontWeight:600,color:t.tx,marginTop:5}}>{a.title}</div>
+                <div style={{fontSize:11,color:t.txs,marginTop:2}}>{a.size} · {a.time}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {tab==='logs'&&(
+          <div className="anim-fade" style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,color:t.txm,lineHeight:1.8}}>
+            {['[09:14:22] AgentRun started','[09:14:23] Loading PRD…','[09:14:25] Repo indexed','[09:14:31] Calling LLM…','[09:14:58] Response: 1847 tokens','[09:14:59] Schema validation ✓','[09:15:00] Step completed'].map((l,i)=>(
+              <div key={i} style={{opacity:0.4+i*0.1}}><span style={{color:t.ag}}>{l.slice(0,11)}</span>{l.slice(11)}</div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{padding:'14px 18px',borderTop:`1.5px solid rgba(0,0,0,0.07)`,background:'rgba(255,255,255,0.25)'}}>
+        <div style={{padding:'9px 12px',borderRadius:9,background:t.pl,border:`1.5px solid ${t.pb}`,marginBottom:11,fontSize:11.5,color:t.txm}}>
+          <span style={{fontWeight:700,color:t.p}}>⚡ 需要你的决策</span> — 审阅计划，确认后 Agent 开始拆解任务。
+        </div>
+        <Btn style={{width:'100%',justifyContent:'center',marginBottom:7,fontSize:14}} size="lg" onClick={onAdvance}>✓ 批准计划</Btn>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:7}}>
+          <Btn variant="outline" style={{justifyContent:'center'}} onClick={onRequest}>↺ 请求修改</Btn>
+          <Btn variant="outline" style={{justifyContent:'center'}} onClick={()=>alert('✏️ 编辑产物：原型占位，打开 split-pane 编辑器')}>✏️ 编辑产物</Btn>
+          <Btn variant="agent" style={{justifyContent:'center'}} onClick={onTakeOver}>👤 接管步骤</Btn>
+          <Btn variant="outline" style={{justifyContent:'center'}} onClick={()=>alert('↩ 重新运行：将取消当前 AgentRun 并以相同输入重新执行')}>↩ 重新运行</Btn>
+        </div>
+        <Btn variant="danger" style={{width:'100%',justifyContent:'center'}} onClick={()=>confirm('确认拒绝？工作流将暂停，步骤标记为 cancelled。')}>✕ 拒绝并终止工作流</Btn>
+      </div>
+    </PanelWrapper>
+  );
+}
+
+function PanelCoding({full,setFull}){
+  const t=useT();const[tab,st]=useState('diff');
+  return(
+    <PanelWrapper title="Agent 实现" badge={<><OwnerTag owner="agent" role="coder"/><Badge color="teal">⟳ Task 2/4</Badge></>} fullscreen={full} setFullscreen={setFull}>
+      <div style={{display:'flex',gap:0,padding:'0 18px',borderBottom:`1px solid rgba(0,0,0,0.07)`,background:'rgba(255,255,255,0.25)',flexShrink:0}}>
+        {[['diff','代码 Diff'],['files','变更文件'],['logs','日志']].map(([k,l])=>(
+          <button key={k} onClick={()=>st(k)} style={{padding:'7px 12px',border:'none',cursor:'pointer',background:'transparent',fontSize:12,fontWeight:600,color:tab===k?t.p:t.txs,borderBottom:`2px solid ${tab===k?t.p:'transparent'}`,transition:'all 0.13s',marginBottom:-1.5}}>{l}</button>
+        ))}
+      </div>
+      {tab==='diff'&&<DiffViewer/>}
+      {tab==='files'&&(
+        <div style={{flex:1,overflow:'auto',padding:'14px 18px'}} className="anim-fade">
+          <AgentBanner role="coder" logs={['git checkout aww/shopflow-web/a1b2c3','Reading task scope…','Implementing CartService.persist()…','Writing unit tests…']}/>
+          {DIFF_FILES.map((f,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,background:'rgba(255,255,255,0.5)',border:'1px solid rgba(0,0,0,0.07)',marginBottom:5,fontFamily:'JetBrains Mono,monospace',fontSize:11.5,color:t.txm}}>
+              <span style={{color:'oklch(68% 0.12 55)',fontWeight:700,flexShrink:0}}>M</span>
+              <span style={{flex:1}}>{f.name}</span>
+              <span style={{color:t.ok,fontSize:10.5,fontWeight:700}}>+{f.adds}</span>
+              {f.dels>0&&<span style={{color:t.er,fontSize:10.5,fontWeight:700}}>-{f.dels}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {tab==='logs'&&(
+        <div style={{flex:1,overflow:'auto',padding:'14px 18px'}} className="anim-fade">
+          <AgentBanner role="coder" logs={['git checkout aww/shopflow-web/a1b2c3','Implementing CartService.persist()…','Writing cart.test.ts…','Committing changes…']}/>
+        </div>
+      )}
+      <div style={{padding:'12px 18px',borderTop:`1px solid rgba(0,0,0,0.07)`,display:'flex',gap:7}}>
+        <Btn variant="danger" style={{flex:1,justifyContent:'center'}} onClick={()=>alert('⊠ Agent 已停止。步骤将回到 retrying 状态。')}>⊠ 停止 Agent</Btn>
+        <Btn variant="agent" style={{flex:1,justifyContent:'center'}}>👤 接管步骤</Btn>
+      </div>
+    </PanelWrapper>
+  );
+}
+
+function PanelTest({full,setFull}){
+  const t=useT();
+  return(
+    <PanelWrapper title="运行测试" badge={<OwnerTag owner="agent" role="test"/>} fullscreen={full} setFullscreen={setFull}>
+      <div style={{flex:1,overflow:'auto',padding:'14px 18px'}}>
+        <AgentBanner role="test" logs={['npm run test -- --coverage','42 tests running…','npm run typecheck','npm run lint']}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+          {[{l:'通过',v:'41',c:t.ok},{l:'失败',v:'0',c:t.er},{l:'跳过',v:'1',c:t.txs},{l:'覆盖率',v:'84%',c:t.ag}].map((s,i)=>(
+            <div key={i} style={{padding:'10px',borderRadius:9,background:'rgba(255,255,255,0.6)',border:'1px solid rgba(0,0,0,0.07)',textAlign:'center'}}>
+              <div style={{fontSize:22,fontWeight:700,color:s.c}}>{s.v}</div>
+              <div style={{fontSize:11,color:t.txs}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{padding:'10px 12px',borderRadius:9,background:'oklch(16% 0.01 220)',fontFamily:'JetBrains Mono,monospace',fontSize:10.5,lineHeight:1.9,color:'oklch(72% 0.04 195)'}}>
+          <span style={{color:t.ok}}>✓</span> CartService.persist()<br/>
+          <span style={{color:t.ok}}>✓</span> CartService.syncToServer()<br/>
+          <span style={{color:t.ok}}>✓</span> useCart — offline fallback<br/>
+          <span style={{color:'oklch(60% 0.05 55)'}}>○</span> CheckoutPage E2E (skipped)<br/>
+          <span style={{color:t.ok}}>PASS</span> typecheck · <span style={{color:t.ok}}>PASS</span> lint
+        </div>
+      </div>
+    </PanelWrapper>
+  );
+}
+
+function PanelReview({onAdvance,onRequest,onTakeOver,full,setFull,onMobile}){
+  const t=useT();
+  const FINDS=[
+    {sev:'High',file:'src/api/cart.ts:47',text:'缺少身份验证中间件'},
+    {sev:'Medium',file:'src/cart/CartService.ts:112',text:'localStorage 写入前缺少序列化校验'},
+    {sev:'Medium',file:'src/hooks/useCart.ts:23',text:'useEffect 依赖数组缺少 cartId'},
+    {sev:'Low',file:'src/pages/CheckoutPage.tsx:89',text:'同步失败缺少错误提示'},
+  ];
+  const sc={High:'red',Medium:'amber',Low:'gray'};
+  return(
+    <PanelWrapper title="最终人工审查" badge={<><OwnerTag owner="human"/><Badge color="amber">⚡ 待决策</Badge></>} fullscreen={full} setFullscreen={setFull} mobileBtn onMobile={onMobile}>
+      <div style={{flex:1,overflow:'auto',padding:'14px 18px'}}>
+        <div style={{display:'flex',gap:7,marginBottom:14,flexWrap:'wrap'}}>
+          {[{l:'Tests',v:'42 ✓',c:'green'},{l:'Lint',v:'0 err',c:'green'},{l:'Coverage',v:'84%',c:'teal'},{l:'Findings',v:'4',c:'amber'}].map((s,i)=>(
+            <div key={i} style={{padding:'5px 10px',borderRadius:8,background:'rgba(255,255,255,0.6)',border:'1px solid rgba(0,0,0,0.07)'}}>
+              <div style={{fontSize:9.5,color:t.txs}}>{s.l}</div>
+              <Badge color={s.c}>{s.v}</Badge>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:11,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:8}}>审查发现</div>
+        {FINDS.map((f,i)=>(
+          <div key={i} style={{padding:'9px 12px',borderRadius:9,marginBottom:6,background:'rgba(255,255,255,0.5)',border:'1px solid rgba(0,0,0,0.07)'}}>
+            <div style={{display:'flex',gap:6,marginBottom:4,alignItems:'center'}}>
+              <Badge color={sc[f.sev]}>{f.sev}</Badge>
+              <span style={{fontSize:10,color:t.txs,fontFamily:'JetBrains Mono,monospace'}}>{f.file}</span>
+            </div>
+            <div style={{fontSize:12.5,color:t.tx}}>{f.text}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:'14px 18px',borderTop:`1.5px solid rgba(0,0,0,0.07)`,background:'rgba(255,255,255,0.25)'}}>
+        <div style={{padding:'9px 12px',borderRadius:9,background:t.pl,border:`1.5px solid ${t.pb}`,marginBottom:11,fontSize:11.5,color:t.txm}}>
+          <span style={{fontWeight:700,color:t.p}}>⚡ 需要你的决策</span> — 1 个高优发现需关注。
+        </div>
+        <Btn style={{width:'100%',justifyContent:'center',marginBottom:7,fontSize:14}} size="lg" onClick={onAdvance}>✓ 批准并创建 PR</Btn>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:7}}>
+          <Btn variant="outline" style={{justifyContent:'center'}} onClick={onRequest}>↺ 请求修改</Btn>
+          <Btn variant="outline" style={{justifyContent:'center'}} onClick={()=>alert('✏️ 编辑产物：原型占位，打开 split-pane 编辑器')}>✏️ 编辑产物</Btn>
+          <Btn variant="agent" style={{justifyContent:'center'}} onClick={onTakeOver}>👤 接管步骤</Btn>
+          <Btn variant="outline" style={{justifyContent:'center'}} onClick={()=>alert('↩ 重新运行：将取消当前 AgentRun 并重新开始')}>↩ 重新运行</Btn>
+        </div>
+        <Btn variant="danger" style={{width:'100%',justifyContent:'center'}} onClick={()=>confirm('确认拒绝？工作流将终止，步骤标记为 cancelled。')&&onAdvance()}>✕ 拒绝并终止工作流</Btn>
+      </div>
+    </PanelWrapper>
+  );
+}
+
+function PanelDone({full,setFull}){
+  const t=useT();
+  return(
+    <PanelWrapper title="工作流完成" badge={<Badge color="green">✓ PR 已创建</Badge>} fullscreen={full} setFullscreen={setFull}>
+      <div style={{flex:1,overflow:'auto',padding:'16px 18px'}}>
+        <div style={{padding:'16px',borderRadius:12,background:t.okl,border:`1.5px solid ${t.ok}45`,marginBottom:14,textAlign:'center'}}>
+          <div style={{fontSize:26,marginBottom:4}}>🎉</div>
+          <div style={{fontSize:14,fontWeight:700,color:t.ok}}>Pull Request #247 已创建</div>
+          <div style={{fontSize:12,color:t.txm,marginTop:2}}>aww/shopflow-web/a1b2c3 → main</div>
+        </div>
+        <div style={{padding:'12px 14px',borderRadius:10,background:'rgba(255,255,255,0.6)',border:'1px solid rgba(0,0,0,0.07)',fontSize:12.5,color:t.tx,lineHeight:1.7,marginBottom:14}}>
+          <strong>变更：</strong>购物车持久化，支持 localStorage + 服务端双写。<br/><br/>
+          <strong>测试：</strong>42 个全部通过，覆盖率 84%。<br/><br/>
+          <strong>风险：</strong>Auth 问题已在实现中修复。
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {[{l:'提交',v:'7'},{l:'变更行',v:'+312'},{l:'文件',v:'4'}].map((s,i)=>(
+            <div key={i} style={{padding:'7px 12px',borderRadius:8,background:'rgba(255,255,255,0.6)',border:'1px solid rgba(0,0,0,0.07)'}}>
+              <div style={{fontSize:9.5,color:t.txs}}>{s.l}</div>
+              <div style={{fontSize:14,fontWeight:700,color:t.tx}}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{padding:'14px 18px',borderTop:`1px solid rgba(0,0,0,0.07)`}}>
+        <Btn variant="success" style={{width:'100%',justifyContent:'center'}}>↗ 在 GitHub 查看 PR</Btn>
+      </div>
+    </PanelWrapper>
+  );
+}
+
+/* ─── MOBILE APPROVAL VIEW ───────────────────────────────────────── */
+function MobileApprovalView({flowState,onClose,onAdvance,onRequest}){
+  const t=useT();
+  const stepName=flowState===3?'导入 PRD':flowState===5?'生成工程计划':'最终人工审查';
+  const stepDesc=flowState===3?'确认产品需求文档已准备好，Planner Agent 将开始规划。':flowState===5?'Review AI 生成的工程计划，确认方向后 Agent 将开始拆解任务。':'Review AI 代码审查结果和完整 diff，决定是否批准创建 PR。';
+  const[swipeY,ssy]=useState(0);
+  const[dismissed,sd]=useState(false);
+  if(dismissed)return null;
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',backdropFilter:'blur(6px)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      {/* phone frame */}
+      <div className="anim-up" style={{
+        width:375,height:680,borderRadius:44,
+        background:'#0a0a0f',
+        boxShadow:'0 32px 80px rgba(0,0,0,0.5),inset 0 0 0 1.5px rgba(255,255,255,0.12)',
+        display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',
+      }}>
+        {/* notch */}
+        <div style={{position:'absolute',top:0,left:'50%',transform:'translateX(-50%)',width:120,height:32,background:'#0a0a0f',borderRadius:'0 0 20px 20px',zIndex:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+          <div style={{width:10,height:10,borderRadius:'50%',background:'#1a1a24'}}/>
+          <div style={{width:55,height:5,borderRadius:99,background:'#1a1a24'}}/>
+        </div>
+        {/* status bar */}
+        <div style={{padding:'12px 24px 4px',display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16}}>
+          <span style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.8)'}}>9:41</span>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <span style={{fontSize:10,color:'rgba(255,255,255,0.6)'}}>●●●●</span>
+            <span style={{fontSize:10,color:'rgba(255,255,255,0.6)'}}>WiFi</span>
+            <span style={{fontSize:11,color:'rgba(255,255,255,0.8)'}}>100%</span>
+          </div>
+        </div>
+        {/* app header */}
+        <div style={{padding:'8px 20px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <Logo size={22} showText/>
+          <div style={{width:8,height:8,borderRadius:'50%',background:t.p,boxShadow:`0 0 8px ${t.p}`}}/>
+        </div>
+        {/* main content */}
+        <div style={{flex:1,overflow:'auto',padding:'0 16px 16px',display:'flex',flexDirection:'column',gap:12}}>
+          {/* notification card */}
+          <div style={{padding:'14px',borderRadius:16,background:`linear-gradient(135deg,${t.p}22,${t.p}10)`,border:`1px solid ${t.p}40`}}>
+            <div style={{fontSize:10.5,fontWeight:700,color:t.p,letterSpacing:0.5,marginBottom:4}}>⚡ 需要你的操作</div>
+            <div style={{fontSize:14,fontWeight:700,color:'rgba(255,255,255,0.95)',lineHeight:1.35,marginBottom:4}}>{stepName}</div>
+            <div style={{fontSize:11.5,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>{stepDesc}</div>
+          </div>
+          {/* context chips */}
+          <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+            {(flowState===8||flowState===9||flowState===10)?[{l:'Tests',v:'42 ✓',ok:true},{l:'Lint',v:'0 err',ok:true},{l:'Findings',v:'4',ok:false}].map((s,i)=>(
+              <div key={i} style={{padding:'5px 10px',borderRadius:8,background:s.ok?'rgba(61,175,100,0.15)':'rgba(230,130,50,0.15)',border:`1px solid ${s.ok?t.ok+'40':t.p+'40'}`}}>
+                <div style={{fontSize:9,color:'rgba(255,255,255,0.4)'}}>{s.l}</div>
+                <div style={{fontSize:12,fontWeight:700,color:s.ok?t.ok:t.p}}>{s.v}</div>
+              </div>
+            )):[]}
+          </div>
+          {/* step context */}
+          <div style={{padding:'12px',borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.09)'}}>
+            <div style={{fontSize:10.5,fontWeight:600,color:'rgba(255,255,255,0.4)',marginBottom:6}}>工作流进度</div>
+            <div style={{display:'flex',alignItems:'center',gap:5}}>
+              {[1,2,3,4,5,6,7,8,9].map(i=>{
+                const done=i<(flowState===3?2:flowState===5?3:8);
+                const cur=i===(flowState===3?2:flowState===5?3:8);
+                return(
+                  <React.Fragment key={i}>
+                    <div style={{width:cur?20:12,height:cur?20:8,borderRadius:cur?'50%':4,background:done?t.ok:cur?t.p:'rgba(255,255,255,0.12)',transition:'all 0.2s',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      {done&&<span style={{fontSize:7,color:'white'}}>✓</span>}
+                    </div>
+                    {i<9&&<div style={{flex:1,height:1.5,background:done?t.ok:'rgba(255,255,255,0.1)',borderRadius:99}}/>}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+            <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:5}}>步骤 {flowState===3?2:flowState===5?3:8} / 9</div>
+          </div>
+        </div>
+        {/* CONTROL PLANE */}
+        <div style={{padding:'14px 16px 24px',borderTop:'1px solid rgba(255,255,255,0.08)',background:'rgba(10,10,15,0.9)',backdropFilter:'blur(20px)'}}>
+          <button onClick={onAdvance} style={{
+            width:'100%',padding:'14px',borderRadius:14,border:'none',cursor:'pointer',
+            background:`linear-gradient(135deg,${t.p},${t.ph})`,
+            color:'white',fontSize:15,fontWeight:700,
+            boxShadow:`0 4px 20px ${t.p}60`,marginBottom:10,
+            fontFamily:'DM Sans,sans-serif',letterSpacing:-0.2
+          }}>
+            {flowState===3?'✓ 确认 PRD 就绪':flowState===5?'✓ 批准计划':'✓ 批准并创建 PR'}
+          </button>
+          <button onClick={onRequest} style={{
+            width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(255,255,255,0.14)',cursor:'pointer',
+            background:'rgba(255,255,255,0.06)',
+            color:'rgba(255,255,255,0.7)',fontSize:13.5,fontWeight:600,
+            fontFamily:'DM Sans,sans-serif'
+          }}>
+            ↺ 请求修改
+          </button>
+        </div>
+      </div>
+      {/* close */}
+      <button onClick={onClose} style={{position:'absolute',top:24,right:24,background:'rgba(255,255,255,0.15)',border:'none',cursor:'pointer',color:'white',fontSize:18,width:36,height:36,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(10px)'}}>✕</button>
+      <div style={{position:'absolute',bottom:24,color:'rgba(255,255,255,0.4)',fontSize:12,letterSpacing:0.3}}>移动端审批视图</div>
+    </div>
+  );
+}
+
+/* ─── OVERLAYS ───────────────────────────────────────────────────── */
+function FindingSel({onClose}){
+  const t=useT();const[sel,ss]=useState([]);
+  const F=[{id:1,sev:'High',file:'src/api/cart.ts:47',text:'缺少身份验证中间件'},{id:2,sev:'Medium',file:'src/cart/CartService.ts:112',text:'localStorage 缺序列化校验'},{id:3,sev:'Medium',file:'src/hooks/useCart.ts:23',text:'useEffect 依赖缺 cartId'},{id:4,sev:'Low',file:'src/pages/CheckoutPage.tsx:89',text:'同步失败缺错误提示'}];
+  const toggle=id=>ss(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const sc={High:'red',Medium:'amber',Low:'gray'};
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.18)',backdropFilter:'blur(4px)',zIndex:100,display:'flex',alignItems:'stretch',justifyContent:'flex-end'}}>
+      <div className="anim-right" style={{width:420,background:t.gl,backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',borderLeft:`1px solid ${t.glb}`,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div style={{padding:'20px 22px 13px',borderBottom:`1px solid rgba(0,0,0,0.07)`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <h3 style={{fontSize:15,fontWeight:700,color:t.tx}}>请求修改</h3>
+            <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:t.txs,fontSize:17}}>✕</button>
+          </div>
+          <p style={{fontSize:12,color:t.txm,marginTop:3}}>选择需修复的问题，Agent 下次运行时处理。</p>
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:'13px 22px'}}>
+          {F.map(f=>(
+            <div key={f.id} onClick={()=>toggle(f.id)} style={{padding:'10px 12px',borderRadius:9,marginBottom:6,cursor:'pointer',background:sel.includes(f.id)?t.pl:'rgba(255,255,255,0.5)',border:`1.5px solid ${sel.includes(f.id)?t.pb:'rgba(0,0,0,0.07)'}`,transition:'all 0.13s'}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                <input type="checkbox" checked={sel.includes(f.id)} readOnly style={{accentColor:t.p,width:13,height:13}}/>
+                <Badge color={sc[f.sev]}>{f.sev}</Badge>
+                <span style={{fontSize:10,color:t.txs,fontFamily:'JetBrains Mono,monospace'}}>{f.file}</span>
+              </div>
+              <div style={{fontSize:12.5,color:t.tx}}>{f.text}</div>
+            </div>
+          ))}
+          <textarea placeholder="附加说明（可选）…" style={{width:'100%',height:80,marginTop:6,padding:'9px 11px',borderRadius:9,resize:'none',border:'1.5px solid rgba(0,0,0,0.1)',fontSize:13,fontFamily:'DM Sans,sans-serif',background:'rgba(255,255,255,0.7)',color:t.tx,outline:'none'}}/>
+        </div>
+        <div style={{padding:'13px 22px',borderTop:`1px solid rgba(0,0,0,0.07)`}}>
+          <Btn style={{width:'100%',justifyContent:'center'}} disabled={sel.length===0} onClick={()=>{onClose(true);}}>
+            提交修改请求{sel.length>0&&` (${sel.length})`}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TakeOverModal({onClose}){
+  const t=useT();const[cp,sc]=useState(false);
+  const cmd='git checkout aww/shopflow-web/a1b2c3 && git pull';
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',backdropFilter:'blur(4px)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <Glass style={{width:460,padding:24,animation:'slideUp 0.3s ease both'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <h3 style={{fontSize:15,fontWeight:700}}>👤 接管步骤</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:t.txs,fontSize:17}}>✕</button>
+        </div>
+        <div style={{padding:'9px 12px',borderRadius:9,background:t.pl,border:`1.5px solid ${t.pb}`,marginBottom:10}}>
+          <div style={{fontSize:9.5,fontWeight:700,color:t.p,marginBottom:1}}>BRANCH</div>
+          <div style={{fontSize:12.5,fontFamily:'JetBrains Mono,monospace',color:t.tx}}>aww/shopflow-web/a1b2c3</div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:10.5,fontWeight:700,color:t.txs,marginBottom:5}}>在本地执行</div>
+          <div style={{display:'flex',alignItems:'center',gap:7,padding:'8px 12px',borderRadius:9,background:'oklch(16% 0.01 220)',border:'1px solid oklch(24% 0.01 220)'}}>
+            <code style={{flex:1,fontSize:10.5,color:'oklch(82% 0.05 195)',fontFamily:'JetBrains Mono,monospace'}}>{cmd}</code>
+            <button onClick={()=>{navigator.clipboard?.writeText(cmd);sc(true);setTimeout(()=>sc(false),2000);}} style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:cp?t.ok:'oklch(55% 0.01 220)'}}>{cp?'✓':'⧉'}</button>
+          </div>
+        </div>
+        <div style={{padding:'9px 11px',borderRadius:8,background:t.agl,border:`1px solid ${t.ag}28`,fontSize:11.5,color:t.ag,marginBottom:16}}>
+          AWW 检测到新提交后自动继续工作流
+        </div>
+        <div style={{display:'flex',gap:7}}>
+          <Btn variant="outline" style={{flex:1,justifyContent:'center'}} onClick={onClose}>取消</Btn>
+          <Btn style={{flex:1,justifyContent:'center'}} onClick={onClose}>确认接管</Btn>
+        </div>
+      </Glass>
+    </div>
+  );
+}
+
+/* ─── EMPTY STATE ────────────────────────────────────────────────── */
+function EmptyState({onStart}){
+  const t=useT();
+  return(
+    <div className="anim-fade" style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:48,textAlign:'center'}}>
+      <div style={{marginBottom:28,animation:'float 3s ease-in-out infinite'}}>
+        <svg width={110} height={70} viewBox="0 0 110 70" fill="none">
+          {[0,1,2,3,4,5,6,7].map(i=><circle key={i} cx={8+i*13} cy={35+Math.sin(i*0.9)*13} r={i===3?6:3.5} fill={i===3?t.p:t.agl} stroke={i===3?t.p:t.ag} strokeWidth={i===3?0:1.5} opacity={0.25+i*0.1}/>)}
+          {[0,1,2,3,4,5,6].map(i=><line key={i} x1={8+i*13+(i===3?6:3.5)} y1={35+Math.sin(i*0.9)*13} x2={8+(i+1)*13-(i+1===3?6:3.5)} y2={35+Math.sin((i+1)*0.9)*13} stroke={t.p} strokeWidth={1.5} opacity={0.2}/>)}
+        </svg>
+      </div>
+      <h1 style={{fontSize:26,fontWeight:700,color:t.tx,letterSpacing:-0.8,marginBottom:10}}>以信心交付功能</h1>
+      <p style={{fontSize:14.5,color:t.txm,maxWidth:360,lineHeight:1.65,marginBottom:30}}>一次定义工作流，Agent 负责实现，你来审批把关。从 PRD 到 PR，全程可追溯。</p>
+      <Btn size="lg" onClick={onStart}>+ 创建第一个工作区</Btn>
+    </div>
+  );
+}
+
+/* ─── WIZARD ─────────────────────────────────────────────────────── */
+function Wizard({onClose,onComplete}){
+  const t=useT();const[step,ss]=useState(1);const[name,sn]=useState('');const[prd,sp]=useState('');
+  const inp={width:'100%',padding:'9px 13px',borderRadius:9,border:'1.5px solid rgba(0,0,0,0.11)',fontSize:13.5,fontFamily:'DM Sans,sans-serif',color:t.tx,background:'rgba(255,255,255,0.8)',outline:'none'};
+  const canNext=(step===1&&name.trim())||(step===2)||(step===3&&prd.trim());
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.22)',backdropFilter:'blur(6px)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <Glass style={{width:500,padding:28,animation:'slideUp 0.3s ease both'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}><Logo size={24}/><button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:17,color:t.txs}}>✕</button></div>
+        <div style={{display:'flex',gap:6,marginBottom:24}}>
+          {['项目','仓库','PRD'].map((s,i)=><div key={i} style={{flex:1}}><div style={{height:3,borderRadius:99,background:i+1<=step?t.p:'rgba(0,0,0,0.08)',transition:'background 0.25s',marginBottom:3}}/><span style={{fontSize:11,fontWeight:600,color:i+1===step?t.p:t.txs}}>{s}</span></div>)}
+        </div>
+        {step===1&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>项目名称</h2><input style={{...inp,border:`1.5px solid ${name.trim()?t.pb:'rgba(0,0,0,0.11)'}`}} placeholder="如：ShopFlow Web" value={name} onChange={e=>sn(e.target.value)}/>{!name.trim()&&<div style={{fontSize:11,color:t.er,marginTop:5}}>请输入项目名称</div>}<div style={{marginTop:10,padding:'10px 12px',borderRadius:9,background:t.pl,border:`1px solid ${t.pb}`}}><div style={{fontSize:11,color:t.txs}}>模板</div><div style={{fontSize:12.5,fontWeight:600,color:t.p}}>PRD → PR 交付流程 · 9步</div></div></div>}
+        {step===2&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>连接仓库</h2><Btn variant="outline" style={{width:'100%',justifyContent:'center',marginBottom:8}}>🔗 Connect GitHub</Btn><div style={{textAlign:'center',fontSize:11,color:t.txs,margin:'8px 0'}}>或</div><input style={inp} placeholder="粘贴 GitHub 仓库 URL…"/></div>}
+        {step===3&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>添加 PRD</h2><textarea style={{...inp,height:130,resize:'none',border:`1.5px solid ${prd.trim()?t.pb:'rgba(0,0,0,0.11)'}`}} placeholder="粘贴产品需求文档…" value={prd} onChange={e=>sp(e.target.value)}/>{!prd.trim()&&<div style={{fontSize:11,color:t.er,marginTop:5}}>请粘贴 PRD 内容</div>}</div>}
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:20}}>
+          <Btn variant="outline" onClick={step===1?onClose:()=>ss(s=>s-1)}>{step===1?'取消':'← 上一步'}</Btn>
+          <Btn disabled={!canNext} onClick={step===3?()=>{if(canNext){onComplete();onClose();}}:()=>canNext&&ss(s=>s+1)}>{step===3?'创建工作区':'下一步 →'}</Btn>
+        </div>
+      </Glass>
+    </div>
+  );
+}
+
+/* ─── SIDEBAR ────────────────────────────────────────────────────── */
+function Sidebar({screen,setScreen}){
+  const t=useT();
+  const navs=[{id:'workspace',icon:'⬡',label:'工作区'},{id:'artifacts',icon:'◈',label:'产物'},{id:'audit',icon:'◎',label:'审计'},{id:'settings',icon:'⊙',label:'设置'}];
+  return(
+    <div style={{width:200,flexShrink:0,background:t.sb,backdropFilter:'blur(22px)',WebkitBackdropFilter:'blur(22px)',borderRight:`1px solid ${t.glb}`,display:'flex',flexDirection:'column',padding:'16px 10px',gap:2,zIndex:10}}>
+      <div style={{padding:'2px 8px 16px'}}><Logo size={24}/></div>
+      <div style={{padding:'6px 8px',borderRadius:8,background:t.pl,border:`1px solid ${t.pb}`,marginBottom:6}}>
+        <div style={{fontSize:9.5,fontWeight:700,color:t.p,letterSpacing:0.5,marginBottom:1}}>当前项目</div>
+        <div style={{fontSize:12.5,fontWeight:600,color:t.tx}}>ShopFlow Web</div>
+        <div style={{fontSize:10.5,color:t.txs}}>checkout-cart-persist</div>
+      </div>
+      {navs.map(n=>(
+        <button key={n.id} onClick={()=>setScreen(n.id)} style={{display:'flex',alignItems:'center',gap:7,padding:'7px 8px',borderRadius:7,background:screen===n.id?t.pl:'transparent',color:screen===n.id?t.p:t.txm,fontWeight:screen===n.id?600:400,fontSize:13,border:screen===n.id?`1px solid ${t.pb}`:'1px solid transparent',cursor:'pointer',transition:'all 0.13s',width:'100%',textAlign:'left'}}>
+          <span style={{fontSize:13,opacity:0.75}}>{n.icon}</span>{n.label}
+        </button>
+      ))}
+      <div style={{marginTop:'auto',padding:'8px',borderRadius:8,background:'rgba(0,0,0,0.04)',border:'1px solid rgba(0,0,0,0.07)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2}}>
+          <span style={{width:6,height:6,borderRadius:'50%',background:t.ok}}/>
+          <span style={{fontSize:10,fontWeight:600,color:t.ok}}>Runner 在线</span>
+        </div>
+        <div style={{fontSize:9.5,color:t.txs,fontFamily:'JetBrains Mono,monospace'}}>localhost:7432</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── WORKSPACE VIEW ─────────────────────────────────────────────── */
+function WorkspaceView({flowState,setFlowState}){
+  const t=useT();
+  const[panelFull,sPF]=useState(false);
+  const[showFind,sSF]=useState(false);
+  const[showTO,sSTO]=useState(false);
+  const[showMobile,sSM]=useState(false);
+  const[toast,sToast]=useState(null);
+  const statuses=FLOW_ST[flowState-1]||[];
+  const steps=STEP_DEFS.map((s,i)=>({...s,status:statuses[i]||'pending'}));
+  const activeIdx=statuses.lastIndexOf('waiting')>=0?statuses.lastIndexOf('waiting'):statuses.lastIndexOf('running');
+  const advance=()=>setFlowState(s=>Math.min(s+1,11));
+
+  const banners={
+    3:{text:'步骤 2 — 需要你确认 PRD 就绪',type:'human'},
+    4:{text:'Planner Agent 正在生成工程计划…',type:'agent'},
+    5:{text:'步骤 3 — 工程计划已生成，等待你审批',type:'human'},
+    6:{text:'Task Breakdown Agent 正在拆解任务…',type:'agent'},
+    7:{text:'Coding Agent 正在实现代码，可查看实时 diff',type:'agent'},
+    8:{text:'Test Agent 正在运行测试套件…',type:'agent'},
+    9:{text:'Review Agent 正在审查代码 diff…',type:'agent'},
+    10:{text:'步骤 8 — 代码审查完成，等待你的最终决策',type:'human'},
+    11:{text:'工作流完成！PR #247 已创建',type:'done'},
+  };
+  const banner=banners[flowState];
+
+  const renderPanel=()=>{
+    const props={full:panelFull,setFull:sPF,onMobile:()=>sSM(true)};
+    switch(flowState){
+      case 3: return <PanelPRDConfirm {...props} onAdvance={advance}/>;
+      case 4: return <PanelAgentRunning {...props} role="planner" nextStep="审批工程计划"/>;
+      case 5: return <PanelPlanApproval {...props} onAdvance={advance} onRequest={()=>sSF(true)} onTakeOver={()=>sSTO(true)}/>;
+      case 6: return <PanelAgentRunning {...props} role="tasker" nextStep="Agent 实现"/>;
+      case 7: return <PanelCoding {...props}/>;
+      case 8: return <PanelTest {...props}/>;
+      case 9: return <PanelAgentRunning {...props} role="review" nextStep="最终人工审查"/>;
+      case 10: return <PanelReview {...props} onAdvance={advance} onRequest={()=>sSF(true)} onTakeOver={()=>sSTO(true)}/>;      
+      case 11: return <PanelDone {...props}/>;
+      default: return null;
+    }
+  };
+  const panel=renderPanel();
+
+  return(
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <FlowNav state={flowState} setState={setFlowState}/>
+      <div style={{flex:1,display:'flex',overflow:'hidden',position:'relative'}}>
+        {/* LEFT: timeline (narrow) */}
+        {!panelFull&&(
+          <div style={{width:290,flexShrink:0,overflow:'auto',padding:'18px 16px',borderRight:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.15)',backdropFilter:'blur(8px)'}}>
+            {/* mini header */}
+            <div style={{marginBottom:14}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:3}}>
+                <div style={{fontSize:11,color:t.txs}}>ShopFlow Web › <span style={{color:t.txm,fontWeight:600}}>checkout-cart-persist</span></div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <h2 style={{fontSize:14,fontWeight:700,color:t.tx}}>WorkflowRun <code style={{fontSize:11,fontWeight:500,background:t.pl,color:t.p,padding:'1px 6px',borderRadius:4,fontFamily:'JetBrains Mono,monospace'}}>a1b2c3</code></h2>
+                <div style={{display:'flex',gap:4}}>
+                  <Btn size="sm" variant="outline" style={{padding:'3px 7px',fontSize:11}} onClick={()=>setFlowState(s=>Math.max(s-1,1))}>‹</Btn>
+                  <Btn size="sm" style={{padding:'3px 7px',fontSize:11}} onClick={advance} disabled={flowState>=11}>›</Btn>
+                </div>
+              </div>
+            </div>
+            {/* banner */}
+            {banner&&(
+              <div className="anim-fade" style={{padding:'9px 11px',borderRadius:10,marginBottom:12,background:banner.type==='human'?t.pl:banner.type==='done'?t.okl:t.agl,border:`1.5px solid ${banner.type==='human'?t.pb:banner.type==='done'?t.ok+'50':t.ag+'45'}`}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:12}}>{banner.type==='human'?'⚡':banner.type==='done'?'🎉':'⟳'}</span>
+                  <span style={{fontSize:11.5,fontWeight:600,color:banner.type==='human'?t.p:banner.type==='done'?t.ok:t.ag,lineHeight:1.4}}>{banner.text}</span>
+                </div>
+              </div>
+            )}
+            {/* legend */}
+            <div style={{display:'flex',gap:8,marginBottom:10}}>
+              <span style={{display:'flex',alignItems:'center',gap:3,fontSize:10,color:t.p,fontWeight:600}}><span style={{width:2.5,height:12,borderRadius:99,background:t.p}}/>人工</span>
+              <span style={{display:'flex',alignItems:'center',gap:3,fontSize:10,color:t.ag,fontWeight:600}}><span style={{width:2.5,height:12,borderRadius:99,background:t.ag}}/>Agent</span>
+            </div>
+            {/* steps */}
+            {steps.map((step,i)=><StepRow key={step.id} step={step} active={activeIdx===i}/>)}
+            {/* branch */}
+            <div style={{marginTop:12,padding:'9px 11px',borderRadius:9,background:'rgba(255,255,255,0.3)',border:'1px solid rgba(0,0,0,0.06)'}}>
+              {[{l:'Branch',v:'aww/shopflow-web/a1b2c3'},{l:'Base',v:'8f3a219'},{l:'Commits',v:flowState>=7?'+7':'0'}].map((s,i)=>(
+
+                <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                  <span style={{fontSize:9.5,color:t.txs,fontWeight:600}}>{s.l}</span>
+                  <span style={{fontSize:9.5,fontFamily:'JetBrains Mono,monospace',color:t.txm}}>{s.v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* RIGHT: panel (flex:1, takes most space) */}
+        {panel}
+        {!panel&&(
+          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:t.txs,flexDirection:'column',gap:10}}>
+            <div style={{fontSize:32}}>⬡</div>
+            <div style={{fontSize:13}}>点击上方状态节点查看详情</div>
+          </div>
+        )}
+      </div>
+      {showFind&&<FindingSel onClose={(submitted)=>{sSF(false);if(submitted)sToast('修改请求已提交，Agent 将在下次运行中处理');}}/>}
+      {toast&&<Toast msg={toast} onDone={()=>sToast(null)}/>}
+      {showTO&&<TakeOverModal onClose={()=>sSTO(false)}/>}
+      {showMobile&&<MobileApprovalView flowState={flowState} onClose={()=>sSM(false)} onAdvance={()=>{advance();sSM(false);}} onRequest={()=>{sSM(false);sSF(true);}}/>}
+    </div>
+  );
+}
+
+/* ─── OTHER SCREENS ──────────────────────────────────────────────── */
+function ArtifactsView(){
+  const t=useT();
+  const arts=[{role:'PRD',title:'购物车持久化需求文档',size:'4.8 KB',time:'9 min ago',by:'human',status:'committed',ver:'v1'},{role:'PLAN',title:'工程实现计划',size:'2.1 KB',time:'3 min ago',by:'planner',status:'committed',ver:'v1'},{role:'TASK_LIST',title:'任务列表 (4 tasks)',size:'1.2 KB',time:'2 min ago',by:'tasker',status:'committed',ver:'v1'},{role:'CODE_PATCH',title:'购物车持久化实现',size:'8.4 KB',time:'刚刚',by:'coder',status:'draft',ver:'v1'}];
+  return(
+    <div style={{flex:1,overflow:'auto',padding:'22px 24px'}}>
+      <h1 style={{fontSize:17,fontWeight:700,color:t.tx,marginBottom:16}}>产物</h1>
+      <div style={{display:'flex',flexDirection:'column',gap:8,maxWidth:560}}>
+        {arts.map((a,i)=>(
+          <Glass key={i} style={{padding:'13px 15px'}}>
+            <div style={{display:'flex',gap:6,marginBottom:6}}><Badge color={a.role==='PLAN'?'amber':a.role==='CODE_PATCH'?'teal':a.role==='TASK_LIST'?'purple':'gray'}>{a.role}</Badge><Badge color={a.status==='committed'?'green':'gray'}>{a.status}</Badge></div>
+            <div style={{fontSize:13,fontWeight:600,color:t.tx,marginBottom:2}}>{a.title}</div>
+            <div style={{fontSize:11,color:t.txs,display:'flex',gap:6,alignItems:'center'}}><Badge color="gray">{a.ver}</Badge>{a.size} · {a.by==='human'?'👤 人工':'🤖 '+a.by} · {a.time}</div>
+          </Glass>
+        ))}
+      </div>
+    </div>
+  );
+}
+function AuditView(){
+  const t=useT();
+  const evts=[{time:'09:15:00',type:'step.completed',msg:'Step 3 completed — PLAN committed'},{time:'09:14:59',type:'artifact.created',msg:'PLAN artifact v1 (art_3kx)'},{time:'09:14:22',type:'agent_run.started',msg:'AgentRun: Planner Agent'},{time:'09:13:55',type:'decision.approved',msg:'PRD confirmed by human'},{time:'09:13:30',type:'step.completed',msg:'Step 1 workspace created'}];
+  const tc={'step.completed':'green','artifact.created':'amber','agent_run.started':'teal','decision.approved':'purple'};
+  return(
+    <div style={{flex:1,overflow:'auto',padding:'22px 24px'}}>
+      <h1 style={{fontSize:17,fontWeight:700,color:t.tx,marginBottom:16}}>审计日志</h1>
+      <div style={{maxWidth:620}}>
+        {evts.map((e,i)=>(
+          <div key={i} style={{display:'flex',gap:12,borderBottom:'1px solid rgba(0,0,0,0.05)',padding:'10px 4px'}}>
+            <span style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:t.txs,flexShrink:0,paddingTop:2}}>{e.time}</span>
+            <div><Badge color={tc[e.type]||'gray'}>{e.type}</Badge><div style={{fontSize:12.5,color:t.tx,marginTop:3,lineHeight:1.5}}>{e.msg}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+function SettingsView(){
+  const t=useT();
+  return(
+    <div style={{flex:1,overflow:'auto',padding:'22px 24px'}}>
+      <h1 style={{fontSize:17,fontWeight:700,color:t.tx,marginBottom:16}}>设置</h1>
+      <div style={{maxWidth:480,display:'flex',flexDirection:'column',gap:9}}>
+        {[{l:'工作区名称',v:'ShopFlow Web'},{l:'仓库',v:'github.com/acme/shopflow-web'},{l:'默认分支',v:'main'},{l:'AI 模型',v:'claude-sonnet-4-6'}].map((item,i)=>(
+          <Glass key={i} style={{padding:'12px 15px'}}><div style={{fontSize:9.5,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:2}}>{item.l.toUpperCase()}</div><div style={{fontSize:13.5,color:t.tx}}>{item.v}</div></Glass>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── TWEAKS ─────────────────────────────────────────────────────── */
+function TweaksPanel({tweaks,setTweaks,vis}){
+  const t=useT();if(!vis)return null;
+  return(
+    <div style={{position:'fixed',bottom:20,right:20,zIndex:200,width:220,padding:15,borderRadius:13,background:t.gl,backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',border:`1px solid ${t.glb}`,boxShadow:'0 8px 40px rgba(0,0,0,0.13)',animation:'slideUp 0.25s ease both'}}>
+      <div style={{fontSize:11,fontWeight:700,color:t.tx,marginBottom:12}}>TWEAKS</div>
+      <div style={{marginBottom:11}}>
+        <div style={{fontSize:10.5,color:t.txs,marginBottom:5,fontWeight:600}}>色彩主题</div>
+        <div style={{display:'flex',gap:6}}>
+          {Object.entries(TH).map(([k,v])=>(
+            <button key={k} onClick={()=>setTweaks(tw=>({...tw,theme:k}))} title={v.name} style={{width:24,height:24,borderRadius:'50%',border:'none',cursor:'pointer',background:v.p,boxShadow:tweaks.theme===k?`0 0 0 2px white,0 0 0 4px ${v.p}`:'none',transition:'all 0.13s'}}/>
+          ))}
+        </div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span style={{fontSize:10.5,color:t.txs,fontWeight:600}}>Agent 日志</span>
+        <div onClick={()=>setTweaks(tw=>({...tw,showLogs:!tw.showLogs}))} style={{width:30,height:17,borderRadius:9,cursor:'pointer',background:tweaks.showLogs?t.p:'rgba(0,0,0,0.14)',position:'relative',transition:'background 0.18s'}}>
+          <div style={{position:'absolute',top:1.5,left:tweaks.showLogs?13:1.5,width:14,height:14,borderRadius:'50%',background:'white',transition:'left 0.18s',boxShadow:'0 1px 3px rgba(0,0,0,0.18)'}}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── APP ────────────────────────────────────────────────────────── */
+function App(){
+  const stored=JSON.parse(localStorage.getItem('aww-tw2')||'null')||TWEAK_DEFAULTS;
+  const[tweaks,setTweaksRaw]=useState(stored);
+  const[screen,setScreen]=useState('workspace');
+  const[showWizard,sSW]=useState(false);
+  const[flowState,setFlowState]=useState(()=>parseInt(localStorage.getItem('aww-flow2')||'5'));
+  const[twVis,sTWV]=useState(false);
+
+  const setTweaks=fn=>{setTweaksRaw(tw=>{const next=typeof fn==='function'?fn(tw):fn;localStorage.setItem('aww-tw2',JSON.stringify(next));window.parent.postMessage({type:'__edit_mode_set_keys',edits:next},'*');return next;});};
+  useEffect(()=>{localStorage.setItem('aww-flow2',String(flowState));},[flowState]);
+  useEffect(()=>{
+    window.addEventListener('message',e=>{
+      if(e.data?.type==='__activate_edit_mode')sTWV(true);
+      if(e.data?.type==='__deactivate_edit_mode')sTWV(false);
+    });
+    window.parent.postMessage({type:'__edit_mode_available'},'*');
+  },[]);
+
+  const t=TH[tweaks.theme]||TH.amber;
+  const isEmpty=flowState<=2&&screen==='workspace';
+
+  return(
+    <TC.Provider value={t}>
+      <div style={{width:'100%',height:'100%',display:'flex',background:t.bgg,fontFamily:'DM Sans,sans-serif',color:t.tx,overflow:'hidden'}}>
+        <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:0,backgroundImage:`radial-gradient(ellipse at 15% 15%,${t.p}10 0%,transparent 55%),radial-gradient(ellipse at 85% 85%,${t.ag}0a 0%,transparent 55%)`}}/>
+        <div style={{position:'relative',zIndex:1,display:'flex',flex:1,overflow:'hidden'}}>
+          {!isEmpty&&<Sidebar screen={screen} setScreen={setScreen}/>}
+          {isEmpty
+            ? <EmptyState onStart={()=>sSW(true)}/>
+            : screen==='workspace'
+              ? <WorkspaceView flowState={flowState} setFlowState={setFlowState}/>
+              : screen==='artifacts'?<ArtifactsView/>
+              : screen==='audit'?<AuditView/>
+              : <SettingsView/>
+          }
+        </div>
+        {showWizard&&<Wizard onClose={()=>sSW(false)} onComplete={()=>{setFlowState(3);sSW(false);setScreen('workspace');}}/>}
+        <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} vis={twVis}/>
+      </div>
+    </TC.Provider>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

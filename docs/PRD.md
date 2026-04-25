@@ -11,7 +11,7 @@ The initial product focuses on the flow from PRD to implementation:
 1. Product owner writes or imports a PRD.
 2. AI planner turns the PRD into an engineering plan.
 3. Human lead reviews and approves the plan.
-4. One or more coding agents implement scoped tasks in the same repo workspace.
+4. One or more coding agents implement scoped tasks serially on the workflow feature branch through the Local Runner.
 5. Test agent runs checks and reports failures.
 6. Review agent performs a code review.
 7. Human reviewer approves, edits, redirects, or takes over.
@@ -89,7 +89,7 @@ PRD -> Plan -> Human Approval -> Task Breakdown -> Agent Implementation -> Test 
 - Agent role assignment
 - Shared artifacts per step
 - Human approval gates
-- Git repository workspace
+- Local Runner-backed Git repository workspace
 - Execution log
 - Basic retry and rerun from checkpoint
 - Final PR summary
@@ -366,7 +366,7 @@ Includes:
 
 3. As a senior engineer, I want each agent step to show its inputs, outputs, and changed files, so that I can review work efficiently.
 
-4. As a team, we want agents to work in the same repo workspace without overwriting each other, so that multi-agent implementation is coordinated.
+4. As a team, we want agents to commit serially to the same workflow feature branch without overwriting each other, so that multi-agent implementation is coordinated.
 
 5. As a reviewer, I want to replay the workflow history from PRD to PR, so that I can understand how the final code was produced.
 
@@ -570,7 +570,7 @@ When a user has no workspaces, the main content area shows:
 
 3-step modal with progress indicator. Each step has a single primary action:
 - Step 1 "Project" → validates non-empty name → "Next"
-- Step 2 "Repository" → "Connect GitHub" (OAuth) or "Use Local Runner" (shows `aww-runner register` command) → validates successful connection → "Next"
+- Step 2 "Repository" → "Connect GitHub" (via local `gh auth login`) or "Use Local Runner" (shows `aww runner register` command) → validates successful connection → "Next"
 - Step 3 "PRD" → validates non-empty content → "Create Workspace"
 
 #### Agent Running State
@@ -632,7 +632,7 @@ When an agent step is running, the step row shows an animated pulsing icon (teal
 - template_step_id
 - name
 - owner_type: enum (human | agent | approval_gate)
-- agent_role: enum (planner | task_breakdown | coding | test | review | summarizer) | null
+- agent_role: enum (planner | tasker | coder | tester | reviewer | summarizer) | null
 - status: enum (pending | running | completed | failed | timed_out | retrying | cancelled | human_owned) *(see §23)*
 - input_artifact_ids: string[]
 - input_artifact_roles: ArtifactRole[] *(declared types expected)*
@@ -693,7 +693,7 @@ When an agent step is running, the step row shows an animated pulsing icon (teal
 - attempt_number: integer *(1-indexed retry attempt)*
 - checkpoint_data: jsonb | null *(agent-defined resume state)*
 - last_heartbeat_at: timestamp | null *(updated every 30s by runner)*
-- timeout_seconds: integer *(per role: coding=1800, test=600, review=900, planner=600)*
+- timeout_seconds: integer *(per role: coder=1800, tester=600, reviewer=900, planner=600)*
 - git_branch: string | null
 - head_commit_sha: string | null *(HEAD after agent commits)*
 - started_at
@@ -858,7 +858,7 @@ This choice satisfies three constraints simultaneously:
 ### Runner Registration
 
 1. User opens AWW Settings → Runners → "Add Runner" → copies runner token
-2. On local machine: `aww-runner register --url https://app.aww.dev --token <runner-token>`
+2. On local machine: `aww runner register --url https://app.aww.dev --token <runner-token>`
 3. Runner appears as "Online" in Workspace Settings within 10 seconds
 4. MVP: one runner per workspace. Post-MVP: multiple runners for parallelism.
 
@@ -891,18 +891,20 @@ Raw code files flow: local repo → runner memory → LLM prompt → never persi
 
 | Credential | Stored By | Used By | AWW Cloud Holds It? |
 |-----------|-----------|---------|-------------------|
-| GitHub OAuth Token | AWW Cloud (AES-256 encrypted) | AWW Cloud (PR creation API) | Yes, encrypted |
+| GitHub credentials | Local `gh` CLI credential store | Runner (git clone/push and PR creation) | No |
 | LLM API Key | Runner local config file | Runner (direct API calls) | No |
 | Runner Token | AWW Cloud (hashed) + local config | Runner registration | Hash only |
-| Git credentials | Runner local config | Runner (git clone/push) | No |
+| Git credentials | Local git/gh credential store | Runner (git clone/push) | No |
 
 ### LLM API Key
 
-The runner calls the LLM provider API directly from the user's machine using the key stored in `~/.aww/runner.config` (permissions: 600). AWW Cloud never proxies, transmits, or stores LLM API keys.
+The runner calls the LLM provider API directly from the user's machine using the key stored in `~/.aww/config.toml` (permissions: 600). AWW Cloud never proxies, transmits, or stores LLM API keys.
 
-### GitHub OAuth Token
+### GitHub Credentials
 
-GitHub OAuth uses the server-side authorization code flow. The resulting access token is encrypted with AES-256-GCM and stored in the AWW Cloud database. It is used server-side exclusively for reading repository metadata and creating pull requests. The token is never sent to the browser or to the runner in plaintext.
+MVP uses the user's local GitHub credentials. The Local Runner requires `gh auth login` and uses the local `gh` CLI or git credential helper to clone, push, and create the pull request. AWW Cloud does not store GitHub OAuth tokens in MVP.
+
+Post-MVP GitHub App integration may store encrypted installation credentials in AWW Cloud for richer repository metadata, checks, statuses, and webhook handling.
 
 ### Code File Privacy
 
@@ -934,7 +936,7 @@ Example: `aww/shopflow-web/a1b2c3`
 1. **WorkflowRun created** → Runner creates feature branch from `Workspace.default_branch` HEAD. Records `WorkflowRun.base_commit_sha`.
 2. **Coding Agent steps** → Each AgentRun commits to the feature branch sequentially (MVP: no parallel coding agents within one run).
 3. **Review Agent step** → Diffs `feature_branch` vs `Workspace.default_branch`.
-4. **Human final approval** → AWW Cloud calls GitHub REST API to create a PR (`feature_branch` → `default_branch`). AWW does not merge or delete the branch.
+4. **Human final approval** → Local Runner calls the local `gh` CLI to create a PR (`feature_branch` → `default_branch`). AWW Cloud does not store GitHub credentials, merge, or delete the branch in MVP.
 5. **Post-merge cleanup** → Managed by the team outside AWW.
 
 ### Commit Convention
@@ -1091,7 +1093,7 @@ Each AgentRun is invoked with a structured payload logged to object storage (ref
 
 ```json
 {
-  "agent_role": "coding",
+  "agent_role": "coder",
   "system_prompt": "...",
   "workspace_context": {
     "repo_url": "...",
@@ -1125,4 +1127,3 @@ Agent Workflow Workspace is a controlled software delivery workspace where human
 Long positioning:
 
 Instead of asking a single agent to take a vague feature request and hope for the best, teams define the workflow first. Each step has an owner, expected output, approval rule, and workspace context. AI agents can plan, code, test, and review, but humans stay in control of architecture, scope, and final acceptance.
-
