@@ -5,8 +5,9 @@ import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
 import { agentRuns } from '../db/schema/runners.js';
 import { workflowSteps } from '../db/schema/workflows.js';
-import { publishEvent } from '../lib/sse.js';
+import { INLINE_CONTENT_LIMIT, putArtifactContent } from '../lib/r2.js';
 import { type RunnerRequest, requireRunner } from '../middleware/runner-auth.js';
+
 import { scheduleNextStep } from '../services/scheduler.js';
 
 interface InlineArtifact {
@@ -64,12 +65,16 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
 
     const createdArtifactIds: string[] = [];
     for (const art of body.output_artifacts ?? []) {
+      const isLarge = Buffer.byteLength(art.content, 'utf8') > INLINE_CONTENT_LIMIT;
+      const blobData = isLarge ? await putArtifactContent(art.content).catch(() => null) : null;
+
       const [artifact] = await db
         .insert(artifacts)
         .values({
           role: art.role as typeof artifacts.$inferInsert['role'],
           stepId: agentRun.stepId,
-          contentInline: art.content,
+          contentInline: blobData ? null : art.content,
+          blobKey: blobData?.blobKey ?? undefined,
           gitCommitSha: art.git_commit_sha,
           createdByType: 'agent',
           createdById: runnerId,
