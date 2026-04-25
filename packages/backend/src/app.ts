@@ -29,6 +29,8 @@ export async function buildApp() {
   });
   await app.register(cookie);
 
+  app.get('/health', async () => ({ status: 'ok' }));
+
   await app.register(artifactRoutes, { prefix: '/api/v1/artifacts' });
   await app.register(agentRunRoutes, { prefix: '/api/v1' });
   await app.register(authRoutes, { prefix: '/api/v1/auth' });

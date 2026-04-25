@@ -13,7 +13,8 @@ const steps: WorkflowStep[] = [
     name: 'Draft PRD',
     status: 'completed',
     owner_type: 'human',
-    output_artifact_ids: []
+    output_artifact_ids: [],
+    updated_at: new Date().toISOString(),
   },
   {
     id: 's_2',
@@ -21,7 +22,8 @@ const steps: WorkflowStep[] = [
     name: 'Approve Plan',
     status: 'running',
     owner_type: 'approval_gate',
-    output_artifact_ids: []
+    output_artifact_ids: [],
+    updated_at: new Date().toISOString(),
   }
 ];
 

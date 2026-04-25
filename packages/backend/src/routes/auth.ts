@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 
 import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
 
 import { db } from '../db/index.js';
 import { users } from '../db/schema/users.js';
@@ -25,7 +26,49 @@ interface CallbackQuerystring {
   state?: string;
 }
 
+const testLoginSchema = z.object({
+  email: z.string().email(),
+});
+
 export const authRoutes: FastifyPluginAsync = async (app) => {
+  // Test-only endpoint: disabled in production
+  if (process.env.NODE_ENV !== 'production') {
+    app.post('/test-login', async (request, reply) => {
+      const parsed = testLoginSchema.safeParse(request.body);
+
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+      }
+
+      const { email } = parsed.data;
+      const login = email.split('@')[0] ?? 'test-user';
+      const githubId = `test-${email.replace(/[^a-z0-9]/gi, '-')}`;
+
+      const [user] = await db
+        .insert(users)
+        .values({ githubId, login, email })
+        .onConflictDoUpdate({
+          target: users.githubId,
+          set: { login, email, updatedAt: new Date() },
+        })
+        .returning();
+
+      const accessToken = signAccess({ sub: user.id });
+
+      return reply.code(200).send({
+        data: {
+          access_token: accessToken,
+          user: {
+            id: user.id,
+            login: user.login,
+            email: user.email ?? '',
+            preferred_language: user.preferredLanguage,
+          },
+        },
+      });
+    });
+  }
+
   app.post('/refresh', async (request, reply) => {
     const refreshToken = request.cookies.refresh_token;
 
