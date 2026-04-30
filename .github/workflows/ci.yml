@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  backend:
+    name: Backend — typecheck + test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aww
+          POSTGRES_PASSWORD: aww
+          POSTGRES_DB: aww
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aww -d aww"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://aww:aww@localhost:5432/aww
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-jwt-secret-32-chars-minimum-xx
+      REFRESH_SECRET: ci-refresh-secret-32-chars-minimumx
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: packages/backend
+        run: pnpm exec tsc --noEmit
+
+      - name: Run migrations
+        working-directory: packages/backend
+        run: pnpm db:migrate
+
+      - name: Test
+        working-directory: packages/backend
+        run: pnpm test
+
+  frontend:
+    name: Frontend — typecheck + test + build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: packages/frontend
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        working-directory: packages/frontend
+        run: pnpm test
+
+      - name: Build
+        working-directory: packages/frontend
+        run: pnpm build
+
+  runner:
+    name: Runner — typecheck + test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: packages/runner
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        working-directory: packages/runner
+        run: pnpm test

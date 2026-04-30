@@ -1,0 +1,36 @@
+# AWW Local Runner — configuration file
+# Default location: ~/.aww/config.toml
+# Copy this file and fill in the values from the AWW UI.
+
+[cloud]
+# Base URL of your AWW backend
+base_url = "http://localhost:3000"
+
+[runner]
+# These values are filled in automatically by `aww runner:register`
+runner_id = ""
+runner_secret = ""
+workspace_id = ""
+# Maximum number of agent tasks to run concurrently (default: 1)
+max_concurrent_agents = 1
+
+[providers]
+# At least one LLM provider is required.
+
+# Anthropic Claude (recommended)
+[providers.anthropic]
+api_key = "sk-ant-..."
+
+# OpenAI / compatible endpoint (optional)
+# [providers.openai]
+# api_key = "sk-..."
+# base_url = "https://api.openai.com/v1"   # optional override
+
+# OpenClaw local gateway (optional)
+# [providers.openclaw]
+# gateway_url = "ws://localhost:18789"
+# api_key = ""   # optional
+
+# Hermes local inference (optional)
+# [providers.hermes]
+# base_url = "http://localhost:7331"
