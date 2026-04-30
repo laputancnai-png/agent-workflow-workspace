@@ -15,6 +15,9 @@ async function scheduleAgentStep(
   });
 
   if (!runner) {
+    await db.update(workflowSteps)
+      .set({ status: 'pending', updatedAt: new Date() })
+      .where(eq(workflowSteps.id, step.id));
     await publishEvent('step.status_changed', { stepId: step.id, status: 'pending', run_id: run.id, no_runner: true }, run.workspaceId);
     return;
   }

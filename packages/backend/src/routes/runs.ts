@@ -97,12 +97,22 @@ export const runDetailRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/runs/:runId', async (request, reply) => {
     const { runId } = request.params as { runId: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
     const run = await db.query.workflowRuns.findFirst({
       where: eq(workflowRuns.id, runId),
     });
 
     if (!run) {
       return reply.code(404).send({ error: 'not_found' });
+    }
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, run.workspaceId), eq(workspaceMembers.userId, userId)),
+    });
+
+    if (!member) {
+      return reply.code(403).send({ error: 'forbidden' });
     }
 
     const steps = await db.select().from(workflowSteps).where(eq(workflowSteps.runId, runId));

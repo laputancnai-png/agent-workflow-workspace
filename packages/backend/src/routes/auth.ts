@@ -31,8 +31,8 @@ const testLoginSchema = z.object({
 });
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  // Test-only endpoint: disabled in production
-  if (process.env.NODE_ENV !== 'production') {
+  // Test-only endpoint: requires explicit opt-in via ENABLE_TEST_LOGIN=true
+  if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_TEST_LOGIN === 'true') {
     app.post('/test-login', async (request, reply) => {
       const parsed = testLoginSchema.safeParse(request.body);
 

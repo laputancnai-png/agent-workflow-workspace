@@ -1,10 +1,11 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { db } from '../db/index.js';
 import { decisions } from '../db/schema/decisions.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
+import { workspaceMembers } from '../db/schema/workspaces.js';
 import { publishEvent } from '../lib/sse.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
 import { failRun, requeueStep, scheduleNextStep } from '../services/scheduler.js';
@@ -41,6 +42,18 @@ export const decisionRoutes: FastifyPluginAsync = async (app) => {
       where: eq(workflowRuns.id, step.runId),
     });
 
+    if (!run) {
+      return reply.code(404).send({ error: 'run_not_found' });
+    }
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, run.workspaceId), eq(workspaceMembers.userId, userId)),
+    });
+
+    if (!member) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
     const { newStepStatus, runEffect } = applyDecision(step.status, parsed.data.action);
 
     await db
@@ -60,13 +73,13 @@ export const decisionRoutes: FastifyPluginAsync = async (app) => {
       })
       .returning();
 
-    await publishEvent('step.status_changed', { stepId, status: newStepStatus, runEffect, run_id: step.runId }, run?.workspaceId);
+    await publishEvent('step.status_changed', { stepId, status: newStepStatus, runEffect, run_id: step.runId }, run.workspaceId);
 
-    if (runEffect === 'advance' && run) {
+    if (runEffect === 'advance') {
       await scheduleNextStep(step.runId, step.position);
     } else if (runEffect === 'requeue_step') {
       await requeueStep(stepId);
-    } else if (runEffect === 'fail_run' && run) {
+    } else if (runEffect === 'fail_run') {
       await failRun(step.runId, run.workspaceId);
     }
 
