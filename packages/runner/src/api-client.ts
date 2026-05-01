@@ -7,6 +7,7 @@ export interface ClaimedTask {
   step_id: string;
   agent_role: string;
   input_artifact_ids: string[];
+  input_artifacts?: Array<{ id: string; role: string; content: string }>;
   preferred_provider: string;
   checkpoint_data?: Record<string, unknown>;
   workspace_id: string | null;
@@ -94,6 +95,10 @@ export class RunnerApiClient {
     await this.request('POST', `/api/v1/agent-runs/${agentRunId}/heartbeat`, data);
   }
 
+  async runnerHeartbeat() {
+    await this.request('POST', `/api/v1/runners/${this.cfg.runner_id}/heartbeat`, {});
+  }
+
   async complete(
     agentRunId: string,
     data: {
@@ -110,6 +115,6 @@ export class RunnerApiClient {
   }
 
   async ackTask(taskId: string) {
-    await this.request('POST', `/api/v1/runners/${this.cfg.runner_id}/tasks/${taskId}/ack`);
+    await this.request('POST', `/api/v1/runners/${this.cfg.runner_id}/tasks/${taskId}/ack`, {});
   }
 }

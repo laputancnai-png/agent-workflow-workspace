@@ -54,41 +54,45 @@ test.describe('Full-stack: workflow run detail page', () => {
     await expect(page.locator('aside').getByText('Create workspace').first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('shows ApprovalActionBar for the running approval_gate step and approves it', async ({ page }) => {
-    // Advance step 1 ("Create workspace", owner_type=human) to running so we can
-    // transition it to an approval_gate step. The template has Import PRD (pos 2)
-    // as approval_gate. We need to put it in running state.
-    const approvalStep = run.steps.find(
-      (s) => s.owner_type === 'approval_gate' && s.position === 2,
-    );
-    expect(approvalStep).toBeDefined();
+  test('shows PRD input panel for the Import PRD step and submits it', async ({ page }) => {
+    // The template has Import PRD (pos 2, approval_gate) as the step where users
+    // paste their PRD. Step 1 (Create workspace) is already running on a fresh run.
+    // We need to advance step 1 to completed so step 2 becomes active.
+    const step1 = run.steps.find((s) => s.position === 1);
+    expect(step1).toBeDefined();
+    if (!step1) return;
 
-    if (!approvalStep) return;
-
-    // Advance the step to running via the start endpoint
-    const startResponse = await fetch(`http://localhost:3000/api/v1/steps/${approvalStep.id}/start`, {
+    // Approve step 1 so step 2 (Import PRD) gets activated
+    await fetch(`http://localhost:3000/api/v1/steps/${step1.id}/decision`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${auth.token}` },
+      headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve' }),
     });
-    expect(startResponse.ok).toBe(true);
 
     await injectAuthIntoPage(page, auth);
-    await page.goto(`/w/${workspace.slug}/runs/${run.id}`);
 
-    // Select the running approval step in the timeline (target aside to avoid strict-mode violation with heading)
-    await page.locator('aside').getByText('Import PRD').first().click();
-
-    // ApprovalActionBar should be visible because owner_type === 'approval_gate'
-    const approveButton = page.getByRole('button', { name: 'Approve', exact: true });
-    await expect(approveButton).toBeVisible({ timeout: 10_000 });
-
-    // Intercept the SSE connection so it does not block
+    // Intercept SSE so it does not block
     await page.route(`**/api/v1/workspaces/${workspace.slug}/events**`, (route) =>
       route.fulfill({ status: 204, body: '' }),
     );
 
-    // Click Approve — this fires a real POST /api/v1/steps/:stepId/decision
-    await approveButton.click();
+    await page.goto(`/w/${workspace.slug}/runs/${run.id}`);
+
+    // Select the Import PRD step in the timeline
+    await page.locator('aside').getByText('Import PRD').first().click();
+
+    // PRDInputPanel should be shown — textarea and submit button visible
+    const textarea = page.locator('textarea');
+    await expect(textarea).toBeVisible({ timeout: 10_000 });
+
+    // Fill in PRD content to enable the submit button
+    await textarea.fill('# PRD\nThis is an E2E test PRD.');
+
+    const submitButton = page.getByRole('button', { name: /提交 PRD/i });
+    await expect(submitButton).toBeEnabled({ timeout: 5_000 });
+
+    // Click submit — fires a real POST /api/v1/steps/:stepId/decision with artifact_content
+    await submitButton.click();
 
     // Toast confirms the decision was submitted
     await expect(page.getByText('Decision submitted')).toBeVisible({ timeout: 10_000 });

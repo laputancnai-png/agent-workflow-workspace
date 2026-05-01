@@ -40,4 +40,15 @@ describe('WorkflowTimeline', () => {
     fireEvent.click(screen.getByRole('button', { name: /approve plan/i }));
     expect(onSelectStep).toHaveBeenCalledWith('s_2');
   });
+
+  it('uses prototype workflow step structure', async () => {
+    await i18n.changeLanguage('en');
+    wrap(<WorkflowTimeline steps={steps} selectedStepId="s_2" onSelectStep={vi.fn()} />);
+
+    const activeStep = screen.getByRole('button', { name: /approve plan/i });
+    expect(activeStep.className).toContain('workflow-step');
+    expect(activeStep.className).toContain('is-selected');
+    expect(activeStep.querySelector('.step-position')?.textContent).toBe('02');
+    expect(activeStep.querySelector('.step-dot')).toBeInTheDocument();
+  });
 });

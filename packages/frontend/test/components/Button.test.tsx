@@ -8,9 +8,10 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });
 
-  it('applies danger variant class', () => {
+  it('applies prototype button classes for the danger variant', () => {
     render(<Button variant="danger">Delete</Button>);
-    expect(screen.getByRole('button').className).toContain('danger');
+    expect(screen.getByRole('button').className).toContain('aww-btn');
+    expect(screen.getByRole('button').className).toContain('aww-btn-danger');
   });
 
   it('is disabled when disabled prop set', () => {

@@ -86,6 +86,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  app.post('/logout', async (_request, reply) => {
+    void reply.clearCookie('refresh_token', { path: '/' });
+    return reply.send({ data: { ok: true } });
+  });
+
   app.get('/login', async (_request, reply) => {
     const clientId = process.env.GITHUB_CLIENT_ID;
     if (!clientId) {

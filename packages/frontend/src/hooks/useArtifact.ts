@@ -5,8 +5,10 @@ export interface Artifact {
   id: string;
   role: string;
   status: string;
-  content_inline?: string;
+  contentInline?: string;
+  title?: string;
   version: number;
+  createdAt: string;
 }
 
 export function useArtifact(artifactId: string) {

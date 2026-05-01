@@ -4,11 +4,12 @@ import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
 import { agentRuns } from '../db/schema/runners.js';
-import { workflowSteps } from '../db/schema/workflows.js';
+import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { INLINE_CONTENT_LIMIT, putArtifactContent } from '../lib/r2.js';
 import { type RunnerRequest, requireRunner } from '../middleware/runner-auth.js';
 
-import { scheduleNextStep } from '../services/scheduler.js';
+import { publishEvent } from '../lib/sse.js';
+import { requeueStep, scheduleNextStep } from '../services/scheduler.js';
 
 interface InlineArtifact {
   role: string;
@@ -116,6 +117,7 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/agent-runs/:agentRunId/fail', async (request, reply) => {
     const { agentRunId } = request.params as { agentRunId: string };
+    const body = request.body as { retryable?: boolean };
     const runnerId = (request as RunnerRequest).runnerId;
     const agentRun = await db.query.agentRuns.findFirst({
       where: eq(agentRuns.id, agentRunId)
@@ -125,10 +127,36 @@ export const agentRunRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(403).send({ error: 'forbidden_runner' });
     }
 
+    if (agentRun.status !== 'running') {
+      return { data: { ok: true } };
+    }
+
     await db
       .update(agentRuns)
       .set({ status: 'failed', updatedAt: new Date() })
       .where(eq(agentRuns.id, agentRunId));
+
+    const step = await db.query.workflowSteps.findFirst({ where: eq(workflowSteps.id, agentRun.stepId) });
+    if (!step) return { data: { ok: true } };
+
+    const run = await db.query.workflowRuns.findFirst({ where: eq(workflowRuns.id, step.runId) });
+    const workspaceId = run?.workspaceId;
+
+    const retriesUsed = agentRun.attemptNumber;
+    const canRetry = body.retryable !== false && retriesUsed <= step.maxRetries;
+
+    if (canRetry) {
+      await db.update(workflowSteps)
+        .set({ status: 'retrying', updatedAt: new Date() })
+        .where(eq(workflowSteps.id, step.id));
+      await publishEvent('step.status_changed', { stepId: step.id, status: 'retrying', run_id: step.runId }, workspaceId);
+      await requeueStep(step.id);
+    } else {
+      await db.update(workflowSteps)
+        .set({ status: 'failed', updatedAt: new Date() })
+        .where(eq(workflowSteps.id, step.id));
+      await publishEvent('step.status_changed', { stepId: step.id, status: 'failed', run_id: step.runId }, workspaceId);
+    }
 
     return { data: { ok: true } };
   });

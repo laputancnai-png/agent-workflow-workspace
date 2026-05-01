@@ -5,7 +5,11 @@ export interface Workspace {
   id: string;
   name: string;
   slug: string;
-  github_repo?: string;
+  githubRepoUrl?: string | null;
+  defaultBranch?: string;
+  initialPrd?: string | null;
+  preferredProvider?: string;
+  preferredModel?: string;
 }
 
 export function useWorkspace(id: string) {
@@ -30,6 +34,9 @@ function toSlug(name: string): string {
 interface CreateWorkspaceInput {
   name: string;
   githubRepoUrl?: string;
+  initialPrd?: string;
+  preferredProvider?: string;
+  preferredModel?: string;
 }
 
 export function useCreateWorkspace() {
@@ -49,6 +56,9 @@ export function useCreateWorkspace() {
         name: input.name,
         slug: toSlug(input.name),
         githubRepoUrl,
+        initialPrd: input.initialPrd?.trim() || undefined,
+        preferredProvider: input.preferredProvider ?? 'openclaw',
+        preferredModel: input.preferredModel ?? 'openclaw-local',
       });
     },
     onSuccess: () => {

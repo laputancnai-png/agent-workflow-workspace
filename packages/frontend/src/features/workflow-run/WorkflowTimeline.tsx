@@ -8,14 +8,14 @@ interface WorkflowTimelineProps {
 }
 
 const statusIcon: Record<string, string> = {
-  completed: 'done',
-  running: 'run',
-  pending: 'wait',
-  failed: 'fail',
-  timed_out: 'time',
-  retrying: 'retry',
-  human_owned: 'user',
-  cancelled: 'stop'
+  completed: 'Done',
+  running: 'Run',
+  pending: 'Wait',
+  failed: 'Fail',
+  timed_out: 'Time',
+  retrying: 'Retry',
+  human_owned: 'Human',
+  cancelled: 'Stop'
 };
 
 const ownerLabel: Record<string, string> = {
@@ -32,14 +32,17 @@ export function WorkflowTimeline({ steps, selectedStepId, onSelectStep }: Workfl
           key={step.id}
           type="button"
           onClick={() => onSelectStep(step.id)}
-          className={`grid w-full grid-cols-[42px_1fr_auto] items-center gap-2 rounded px-3 py-2 text-left transition-colors ${
-            selectedStepId === step.id ? 'bg-[var(--surface-soft)]' : 'hover:bg-[var(--surface)]'
+          className={`workflow-step ${
+            selectedStepId === step.id ? 'is-selected' : ''
           }`}
         >
-          <span className="text-xs font-medium text-[var(--muted)]">{statusIcon[step.status] ?? 'wait'}</span>
+          <span className="step-position">{String(step.position).padStart(2, '0')}</span>
+          <span className={`step-dot is-${step.status.replace(/_/g, '-')}`} />
           <span className="min-w-0">
-            <span className="block truncate text-sm text-[var(--ink)]">{step.name}</span>
-            <span className="block text-xs text-[var(--muted)]">{ownerLabel[step.owner_type] ?? step.owner_type}</span>
+            <span className="block truncate text-sm font-bold text-[var(--ink)]">{step.name}</span>
+            <span className="mt-0.5 block text-[11px] font-semibold text-[var(--subtle)]">
+              {ownerLabel[step.owner_type] ?? step.owner_type} · {statusIcon[step.status] ?? 'Wait'}
+            </span>
           </span>
           <StatusPill status={step.status} />
         </button>

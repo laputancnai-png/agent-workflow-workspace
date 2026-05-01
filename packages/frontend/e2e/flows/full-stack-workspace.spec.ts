@@ -102,5 +102,23 @@ test.describe('Full-stack: workspace list and creation', () => {
     // Navigate to the workspace overview page
     await page.getByText(wsName).click();
     await expect(page).toHaveURL(new RegExp(`/w/${slug}`));
+    await expect(page.getByRole('heading', { name: wsName })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('PRD to PR delivery flow')).toBeVisible();
+  });
+
+  test('starts a WorkflowRun from the workspace overview', async ({ page }) => {
+    const slug = uniqueSlug('ws-e2e');
+    const wsName = `E2E Run Start Workspace ${slug}`;
+    const created = await createWorkspaceViaApi(auth.token, wsName, slug);
+    createdWorkspaceIds.push(created.id);
+
+    await injectAuthIntoPage(page, auth);
+    await page.goto(`/w/${slug}`);
+
+    await expect(page.getByText('No WorkflowRuns yet')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /start first workflowrun/i }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/w/${slug}/runs/`));
+    await expect(page.locator('aside').getByText('Create workspace').first()).toBeVisible({ timeout: 10_000 });
   });
 });

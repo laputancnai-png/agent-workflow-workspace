@@ -17,12 +17,13 @@ export function buildCliProgram() {
     .requiredOption('--token <token>', 'One-time registration token from AWW UI')
     .requiredOption('--url <url>', 'AWW Cloud base URL')
     .requiredOption('--workspace <id>', 'Workspace ID')
-    .action(async (opts: { token: string; url: string; workspace: string }) => {
+    .option('--provider <id...>', 'Provider capability to register, e.g. openclaw')
+    .action(async (opts: { token: string; url: string; workspace: string; provider?: string[] }) => {
       await registerRunner({
         base_url: opts.url,
         registration_token: opts.token,
         workspace_id: opts.workspace,
-        provider_ids: [],
+        provider_ids: opts.provider ?? [],
       });
     });
   program

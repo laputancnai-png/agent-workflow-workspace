@@ -6,14 +6,14 @@ interface BadgeProps {
 }
 
 const colors = {
-  green: 'bg-green-900/30 text-green-400',
-  amber: 'bg-amber-900/30 text-amber-400',
-  red: 'bg-red-900/30 text-red-400',
-  teal: 'bg-teal-900/30 text-teal-400',
-  violet: 'bg-violet-900/30 text-violet-400',
-  muted: 'bg-gray-800 text-gray-400'
+  green: 'bg-[var(--success-soft)] text-[var(--green)]',
+  amber: 'bg-[var(--accent-soft)] text-[var(--amber)]',
+  red: 'bg-[var(--danger-soft)] text-[var(--red)]',
+  teal: 'bg-[var(--agent-soft)] text-[var(--teal)]',
+  violet: 'bg-violet-50 text-[var(--violet)]',
+  muted: 'bg-black/5 text-[var(--subtle)]'
 };
 
 export function Badge({ children, color = 'muted' }: BadgeProps) {
-  return <span className={`rounded px-1.5 py-0.5 text-xs ${colors[color]}`}>{children}</span>;
+  return <span className={`rounded px-2 py-0.5 text-[11px] font-bold ${colors[color]}`}>{children}</span>;
 }

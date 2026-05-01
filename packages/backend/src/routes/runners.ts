@@ -1,11 +1,12 @@
 import { createId } from '@paralleldrive/cuid2';
 import { createHash } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
 import { db } from '../db/index.js';
 import { agentRuns, runners } from '../db/schema/runners.js';
+import { artifacts } from '../db/schema/artifacts.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaces } from '../db/schema/workspaces.js';
 import { getRedis } from '../lib/redis.js';
@@ -89,8 +90,13 @@ export const runnerRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const rawTimeout = Number.parseInt(request.query.timeout ?? '25', 10);
       const timeoutSeconds = Math.min(Number.isNaN(rawTimeout) ? 25 : rawTimeout, 30);
-      const redis = getRedis();
-      const task = await redis.brpop(`runner:queue:${runnerId}`, timeoutSeconds);
+      const redis = getRedis().duplicate();
+      let task: [string, string] | null = null;
+      try {
+        task = await redis.brpop(`runner:queue:${runnerId}`, timeoutSeconds);
+      } finally {
+        redis.disconnect();
+      }
 
       if (!task) {
         return reply.code(204).send();
@@ -130,17 +136,45 @@ export const runnerRoutes: FastifyPluginAsyncZod = async (app) => {
           .where(eq(workflowRuns.id, run.id));
       }
 
+      const runSteps = run ? await db.select().from(workflowSteps).where(eq(workflowSteps.runId, run.id)) : [];
+      const stepIds = runSteps.map((runStep) => runStep.id);
+      const inputArtifacts =
+        step && step.inputArtifactRoles.length > 0 && stepIds.length > 0
+          ? await db
+              .select({
+                id: artifacts.id,
+                role: artifacts.role,
+                content: artifacts.contentInline,
+              })
+              .from(artifacts)
+              .where(
+                and(
+                  inArray(artifacts.stepId, stepIds),
+                  inArray(artifacts.role, step.inputArtifactRoles as Array<typeof artifacts.$inferSelect['role']>),
+                  eq(artifacts.status, 'committed'),
+                ),
+              )
+          : [];
+
       return {
         data: {
-          ...updated,
+          agent_run_id: updated.id,
+          step_id: updated.stepId,
+          agent_role: updated.agentRole,
+          checkpoint_data: updated.checkpointData,
           workspace_id: workspace?.id ?? null,
           workspace_slug: workspace?.slug ?? null,
           repo_url: workspace?.githubRepoUrl ?? null,
           default_branch: workspace?.defaultBranch ?? 'main',
           run_id: run?.id ?? null,
           feature_branch: featureBranch,
-          input_artifact_ids: [],
-          preferred_provider: workspace?.preferredProvider ?? 'anthropic',
+          input_artifact_ids: inputArtifacts.map((artifact) => artifact.id),
+          input_artifacts: inputArtifacts.map((artifact) => ({
+            id: artifact.id,
+            role: artifact.role,
+            content: artifact.content ?? '',
+          })),
+          preferred_provider: workspace?.preferredProvider ?? 'openclaw',
         },
       };
     }

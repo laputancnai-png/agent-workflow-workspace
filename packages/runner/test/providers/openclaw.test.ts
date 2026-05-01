@@ -131,6 +131,78 @@ describe('OpenClawAdapter', () => {
     ).rejects.toThrow('Rate limit exceeded');
   });
 
+  it('complete supports OpenClaw v3 session gateway frames', async () => {
+    wss.on('connection', (ws) => {
+      ws.send(JSON.stringify({ type: 'event', event: 'connect.challenge', payload: { nonce: 'v3' } }));
+      ws.on('message', (data) => {
+        const msg = JSON.parse(data.toString()) as {
+          type?: string;
+          method?: string;
+          id?: string;
+          params?: Record<string, unknown>;
+        };
+
+        if (msg.type === 'req' && msg.method === 'connect') {
+          ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { type: 'hello-ok', protocol: 3 } }));
+        }
+        if (msg.type === 'req' && msg.method === 'sessions.create') {
+          ws.send(
+            JSON.stringify({
+              type: 'res',
+              id: msg.id,
+              ok: true,
+              payload: { ok: true, key: 'agent:main:dashboard:test', sessionId: 'session-1' },
+            }),
+          );
+        }
+        if (msg.type === 'req' && msg.method === 'sessions.messages.subscribe') {
+          ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { subscribed: true } }));
+        }
+        if (msg.type === 'req' && msg.method === 'sessions.send') {
+          expect(msg.params?.message).toContain('Hello');
+          ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { runId: 'run-1', status: 'started' } }));
+          ws.send(
+            JSON.stringify({
+              type: 'event',
+              event: 'chat',
+              payload: {
+                sessionKey: 'agent:main:dashboard:test',
+                state: 'delta',
+                message: { role: 'assistant', content: [{ type: 'text', text: 'Open' }] },
+              },
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'event',
+              event: 'chat',
+              payload: {
+                sessionKey: 'agent:main:dashboard:test',
+                state: 'final',
+                message: { role: 'assistant', content: [{ type: 'text', text: 'OpenClaw v3 says hi' }] },
+              },
+            }),
+          );
+        }
+      });
+    });
+    const adapter = new OpenClawAdapter({ gateway_url: `ws://localhost:${port}`, api_key: 'gateway-token' });
+
+    const response = await Promise.race([
+      adapter.complete({
+        model: 'openclaw-default',
+        messages: [{ role: 'user', content: 'Hello' }],
+        max_tokens: 100,
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('timed out waiting for v3 completion')), 500);
+      }),
+    ]);
+
+    expect(response.content).toBe('OpenClaw v3 says hi');
+    expect(response.stop_reason).toBe('end_turn');
+  });
+
   it('includes api_key in connect params when configured', async () => {
     let connectParams: Record<string, unknown> = {};
     wss.on('connection', (ws) => {

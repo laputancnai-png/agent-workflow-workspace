@@ -3,9 +3,9 @@ import { useRunners } from '../hooks/useRunners.js';
 import { useSSEStore } from '../stores/sse.store.js';
 
 const STATUS_STYLES: Record<string, string> = {
-  online: 'bg-[var(--green)] text-[var(--ink)]',
-  offline: 'bg-[var(--line)] text-[var(--muted)]',
-  draining: 'bg-[var(--amber)] text-[var(--ink)]',
+  online: 'bg-[var(--success-soft)] text-[var(--green)]',
+  offline: 'bg-black/5 text-[var(--subtle)]',
+  draining: 'bg-[var(--accent-soft)] text-[var(--amber)]',
 };
 
 const DOT_STYLES: Record<string, string> = {
@@ -21,7 +21,7 @@ export function RunnerMgmtPage() {
 
   return (
     <section className="h-full overflow-auto p-6">
-      <h1 className="mb-6 text-2xl font-semibold text-[var(--ink)]">Runners</h1>
+      <h1 className="mb-4 text-[17px] font-extrabold text-[var(--ink)]">Runners</h1>
 
       {isLoading ? (
         <p className="text-sm text-[var(--muted)]">Loading…</p>
@@ -38,7 +38,7 @@ export function RunnerMgmtPage() {
             return (
               <div
                 key={runner.id}
-                className="flex items-center gap-3 rounded border border-[var(--line)] bg-[var(--surface)] px-4 py-3"
+                className="glass-panel flex items-center gap-3 px-4 py-3"
               >
                 <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
                 <div className="min-w-0 flex-1">
@@ -49,7 +49,7 @@ export function RunnerMgmtPage() {
                   {(live?.capabilities ?? runner.capabilities).map((cap) => (
                     <span
                       key={cap}
-                      className="rounded bg-[var(--surface-soft)] px-1.5 py-0.5 text-xs text-[var(--muted)]"
+                      className="rounded bg-white/50 px-1.5 py-0.5 text-xs text-[var(--muted)]"
                     >
                       {cap}
                     </span>

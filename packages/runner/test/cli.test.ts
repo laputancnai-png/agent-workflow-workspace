@@ -10,4 +10,11 @@ describe('runner CLI', () => {
     expect(commandNames).toContain('runner:register');
     expect(commandNames).toContain('runner:start');
   });
+
+  it('exposes provider registration option', () => {
+    const program = buildCliProgram();
+    const register = program.commands.find((command) => command.name() === 'runner:register');
+
+    expect(register?.options.map((option) => option.long)).toContain('--provider');
+  });
 });

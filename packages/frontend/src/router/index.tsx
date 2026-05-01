@@ -1,6 +1,8 @@
 import { createBrowserRouter, redirect } from 'react-router-dom';
 import { AppShell } from '../layout/AppShell.js';
 import { WorkspaceLayout } from '../layout/WorkspaceLayout.js';
+import { ArtifactsPage } from '../pages/ArtifactsPage.js';
+import { AuditPage } from '../pages/AuditPage.js';
 import { LoginPage } from '../pages/LoginPage.js';
 import { OAuthCallbackPage } from '../pages/OAuthCallbackPage.js';
 import { RunnerMgmtPage } from '../pages/RunnerMgmtPage.js';
@@ -32,6 +34,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <WorkspaceOverviewPage /> },
           { path: 'runs/:runId', element: <RunDetailPage /> },
+          { path: 'artifacts', element: <ArtifactsPage /> },
+          { path: 'audit', element: <AuditPage /> },
           { path: 'runners', element: <RunnerMgmtPage /> },
           { path: 'settings', element: <SettingsPage /> }
         ]

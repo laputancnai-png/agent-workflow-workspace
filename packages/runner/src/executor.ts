@@ -9,10 +9,12 @@ export class AgentExecutor {
   run(req: AgentRequest) {
     return new Promise<AgentResponse>((resolve) => {
       let settled = false;
-      const child = spawn('node', [this.opts.scriptPath], {
+      const isTypeScript = this.opts.scriptPath.endsWith('.ts');
+      const child = spawn(isTypeScript ? 'tsx' : 'node', [this.opts.scriptPath], {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },
       });
+      let stderr = '';
 
       const finish = (response: AgentResponse) => {
         if (settled) {
@@ -50,12 +52,26 @@ export class AgentExecutor {
         }
       });
 
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
       child.on('error', (error) => {
         finish({
           type: 'fail',
           agent_run_id: req.agent_run_id,
           error_code: 'SPAWN_ERROR',
           error_message: error.message,
+          retryable: false,
+        });
+      });
+
+      child.on('exit', (code, signal) => {
+        finish({
+          type: 'fail',
+          agent_run_id: req.agent_run_id,
+          error_code: 'NO_OUTPUT',
+          error_message: stderr.trim() || `Agent exited without output (code=${code ?? 'null'}, signal=${signal ?? 'null'})`,
           retryable: false,
         });
       });

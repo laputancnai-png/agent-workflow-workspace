@@ -21,16 +21,16 @@ export function EditOutputModal() {
   const [editedContent, setEditedContent] = useState('');
 
   useEffect(() => {
-    if (artifact?.content_inline) {
-      setEditedContent(artifact.content_inline);
+    if (artifact?.contentInline) {
+      setEditedContent(artifact.contentInline);
     } else {
       setEditedContent('');
     }
-  }, [artifact?.content_inline]);
+  }, [artifact?.contentInline]);
 
   if (!isOpen) return null;
 
-  const originalContent = artifact?.content_inline ?? '';
+  const originalContent = artifact?.contentInline ?? '';
   const isBusy = isCreating || isSubmitting;
 
   const handleSubmit = async () => {

@@ -19,8 +19,9 @@ export const workspaces = pgTable('workspaces', {
   name: varchar('name', { length: 128 }).notNull(),
   githubRepoUrl: text('github_repo_url'),
   defaultBranch: varchar('default_branch', { length: 128 }).default('main').notNull(),
-  preferredModel: varchar('preferred_model', { length: 64 }).default('claude-sonnet-4-6').notNull(),
-  preferredProvider: varchar('preferred_provider', { length: 32 }).default('anthropic').notNull(),
+  initialPrd: text('initial_prd'),
+  preferredModel: varchar('preferred_model', { length: 64 }).default('openclaw-local').notNull(),
+  preferredProvider: varchar('preferred_provider', { length: 32 }).default('openclaw').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { RunnerApiClient, type ClaimedTask } from './api-client.js';
@@ -44,8 +45,16 @@ export async function startDaemon(configPath?: string) {
     runner_id: cfg.runner.runner_id,
     runner_secret: cfg.runner.runner_secret,
   });
+  const runnerHeartbeat = setInterval(() => {
+    client.runnerHeartbeat().catch((error) => {
+      process.stderr.write(`[daemon] runner heartbeat failed: ${String(error)}\n`);
+    });
+  }, 60_000);
+  await client.runnerHeartbeat();
+  const dispatcherJs = join(import.meta.dirname, 'agents', 'dispatcher.js');
+  const dispatcherTs = join(import.meta.dirname, 'agents', 'dispatcher.ts');
   const executor = new AgentExecutor({
-    scriptPath: join(import.meta.dirname, 'agents', 'dispatcher.js'),
+    scriptPath: existsSync(dispatcherJs) ? dispatcherJs : dispatcherTs,
     timeoutMs: 10 * 60_000,
   });
 
@@ -68,7 +77,7 @@ export async function startDaemon(configPath?: string) {
         agent_run_id: task.agent_run_id,
         step_id: task.step_id,
         agent_role: task.agent_role,
-        input_artifacts: [],
+        input_artifacts: task.input_artifacts ?? [],
         preferred_provider: task.preferred_provider,
         checkpoint_data: task.checkpoint_data,
         config: {
@@ -103,7 +112,11 @@ export async function startDaemon(configPath?: string) {
   }
 
   const poller = new TaskPoller(client, (task) => void handleTask(task));
-  process.on('SIGTERM', () => poller.stop());
-  process.on('SIGINT', () => poller.stop());
+  const stop = () => {
+    clearInterval(runnerHeartbeat);
+    poller.stop();
+  };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
   await poller.run();
 }

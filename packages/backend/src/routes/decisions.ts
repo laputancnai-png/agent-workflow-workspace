@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { db } from '../db/index.js';
+import { artifacts } from '../db/schema/artifacts.js';
 import { decisions } from '../db/schema/decisions.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
@@ -14,6 +15,7 @@ import { applyDecision } from '../services/state-machine.js';
 const decisionSchema = z.object({
   action: z.enum(['approve', 'reject', 'request_changes', 'edit', 'take_over', 'rerun']),
   comment: z.string().optional(),
+  artifact_content: z.string().optional(),
   edited_artifact_id: z.string().optional(),
   target_step_id: z.string().optional(),
 });
@@ -55,6 +57,22 @@ export const decisionRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const { newStepStatus, runEffect } = applyDecision(step.status, parsed.data.action);
+
+    if (parsed.data.action === 'approve' && parsed.data.artifact_content) {
+      const [artifact] = await db
+        .insert(artifacts)
+        .values({
+          stepId,
+          role: 'PRD',
+          status: 'committed',
+          contentInline: parsed.data.artifact_content,
+          createdByType: 'human',
+          createdById: userId,
+          committedAt: new Date(),
+        })
+        .returning();
+      void artifact;
+    }
 
     await db
       .update(workflowSteps)

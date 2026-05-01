@@ -8,6 +8,13 @@
       "when": 1776898474870,
       "tag": "0000_nostalgic_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777658383719,
+      "tag": "0001_last_tombstone",
+      "breakpoints": true
     }
   ]
 }

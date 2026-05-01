@@ -14,8 +14,50 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleGitHubLogin = () => {
-    window.location.href = `${BACKEND_URL}/api/v1/auth/login`;
+  const handleGitHubLogin = async () => {
+    const loginUrl = IS_DEV ? '/api/v1/auth/login' : `${BACKEND_URL}/api/v1/auth/login`;
+    setError('');
+
+    if (!IS_DEV) {
+      window.location.href = loginUrl;
+      return;
+    }
+
+    try {
+      const response = await fetch(loginUrl, { redirect: 'manual' });
+      if (response.status >= 400) {
+        let message =
+          response.status === 500
+            ? 'Backend is not reachable. Start the backend on http://localhost:3000.'
+            : 'GitHub login is not available.';
+        try {
+          const json = (await response.json()) as { error?: string };
+          if (json.error === 'github_oauth_not_configured') {
+            message = 'GitHub OAuth is not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in packages/backend/.env.';
+          }
+        } catch {
+          // Keep the generic message when the backend does not return JSON.
+        }
+        setError(message);
+        return;
+      }
+
+      window.location.href = loginUrl;
+    } catch {
+      setError('Backend is not reachable. Start the backend on http://localhost:3000.');
+    }
+  };
+
+  const startLocalDevSession = () => {
+    const login = email.split('@')[0] || 'dev-user';
+    setAuth('dev-local-token', {
+      id: 'dev-local-user',
+      name: login,
+      email,
+      preferred_language: 'zh-CN'
+    });
+    setError('Backend is not reachable. Started a local dev session for UI preview.');
+    navigate('/workspaces');
   };
 
   const handleTestLogin = async () => {
@@ -36,7 +78,11 @@ export function LoginPage() {
       setAuth(access_token, { id: user.id, name: user.login, email: user.email, preferred_language: user.preferred_language });
       navigate('/workspaces');
     } catch {
-      setError('Network error');
+      if (IS_DEV) {
+        startLocalDevSession();
+        return;
+      }
+      setError('Backend is not reachable. Start the backend on http://localhost:3000.');
     } finally {
       setLoading(false);
     }

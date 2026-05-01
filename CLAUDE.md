@@ -12,17 +12,17 @@ Current phase: **static UI prototype** — no build system, no npm, no framework
 
 ```
 agent-workflow-workspace/
-├── index.html       # Complete single-file UI prototype (HTML + CSS + JS inline)
 └── docs/
     └── PRD.md       # Full product requirements document (20 sections)
+    └── AWW Prototype_v2.html       # Complete single-file UI prototype (HTML + CSS + JS inline)
 ```
 
 ## Working with the Prototype
 
-The entire UI lives in `index.html`. To preview it, open it directly in a browser — no server needed:
+The entire UI lives in `AWW Prototype_v2.html`. To preview it, open it directly in a browser — no server needed:
 
 ```bash
-open index.html
+open AWW Prototype_v2.html
 ```
 
 There is no build step, no package manager, no compilation. All CSS and JavaScript are inline in the single HTML file.

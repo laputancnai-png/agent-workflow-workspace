@@ -271,8 +271,10 @@ describe('Runner routes', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body) as { data: { id: string } };
-    expect(body.data.id).toBe(agentRun.id);
+    const body = JSON.parse(res.body) as { data: { agent_run_id: string; step_id: string; agent_role: string } };
+    expect(body.data.agent_run_id).toBe(agentRun.id);
+    expect(body.data.step_id).toBe(agentRun.stepId);
+    expect(body.data.agent_role).toBe(agentRun.agentRole);
   });
 
   it('POST /runners/:runnerId/tasks/:agentRunId/ack returns 401 without runner auth', async () => {

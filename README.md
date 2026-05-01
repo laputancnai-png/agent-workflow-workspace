@@ -31,6 +31,8 @@ Infrastructure: PostgreSQL 16 (task queue + artifacts) · Redis 7 (pubsub + SSE 
 
 ## Quick Start
 
+For a more detailed first-time setup, startup, OAuth, smoke test, and E2E guide, see [Local Development Runbook](docs/LOCAL_DEV_RUNBOOK.md).
+
 ### 1. Clone and install
 
 ```bash

@@ -8,6 +8,7 @@ import { decisions } from '../db/schema/decisions.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
 import { publishEvent } from '../lib/sse.js';
+import { requeueStep } from '../services/scheduler.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
 
 const rerunSchema = z.object({
@@ -107,6 +108,10 @@ export const stepRoutes: FastifyPluginAsync = async (app) => {
     });
 
     await publishEvent('step.status_changed', { stepId, status: 'retrying', run_id: loaded.run.id }, loaded.run.workspaceId);
+
+    if (loaded.step.ownerType === 'agent' && loaded.step.agentRole) {
+      await requeueStep(stepId);
+    }
 
     return { data: { step_id: stepId, step_status: 'retrying' } };
   });

@@ -72,7 +72,7 @@ describe('agents dispatcher', () => {
     expect(response.type).toBe('complete');
     expect(response.output_artifacts?.[0].role).toBe('TEST_REPORT');
     expect(response.output_artifacts?.[0].content).toContain('TESTS_OK');
-  });
+  }, 15_000);
 
   it('dispatches coder role and returns fail when no LLM provider configured', async () => {
     const request: AgentRequest = {

@@ -58,4 +58,32 @@ describe('RunnerApiClient', () => {
 
     expect(task?.agent_run_id).toBe('ar_1');
   });
+
+  it('sends runner heartbeat to runner endpoint', async () => {
+    let called = false;
+    nock(baseUrl)
+      .post('/api/v1/runners/r_1/heartbeat')
+      .reply(() => {
+        called = true;
+        return [200, {}];
+      });
+
+    await client.runnerHeartbeat();
+
+    expect(called).toBe(true);
+  });
+
+  it('sends an empty JSON body when acknowledging a task', async () => {
+    let body: unknown;
+    nock(baseUrl)
+      .post('/api/v1/runners/r_1/tasks/ar_1/ack', (requestBody) => {
+        body = requestBody;
+        return true;
+      })
+      .reply(200, {});
+
+    await client.ackTask('ar_1');
+
+    expect(body).toEqual({});
+  });
 });
