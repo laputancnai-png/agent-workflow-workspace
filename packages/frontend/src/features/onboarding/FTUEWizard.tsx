@@ -9,7 +9,7 @@ interface WizardData {
 }
 
 interface FTUEWizardProps {
-  onComplete: (data: WizardData) => void;
+  onComplete: (data: WizardData) => void | Promise<void>;
 }
 
 export function FTUEWizard({ onComplete }: FTUEWizardProps) {

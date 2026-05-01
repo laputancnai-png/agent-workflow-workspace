@@ -1,17 +1,28 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button.js';
 import { EmptyState } from '../features/onboarding/EmptyState.js';
 import { FTUEWizard } from '../features/onboarding/FTUEWizard.js';
-import { useWorkspaces } from '../hooks/useWorkspace.js';
+import { useWorkspaces, useCreateWorkspace } from '../hooks/useWorkspace.js';
 
 export function WorkspacesPage() {
   const { data: workspaces = [], isLoading } = useWorkspaces();
+  const { mutateAsync: createWorkspace } = useCreateWorkspace();
   const [showWizard, setShowWizard] = useState(false);
+  const navigate = useNavigate();
+
+  const handleWizardComplete = async (data: { name: string; github_repo: string; prd: string }) => {
+    const workspace = await createWorkspace({
+      name: data.name,
+      githubRepoUrl: data.github_repo || undefined,
+    });
+    setShowWizard(false);
+    navigate(`/w/${workspace.slug}`);
+  };
 
   if (isLoading) return <div className="p-6 text-sm text-[var(--muted)]">Loading...</div>;
   if (workspaces.length === 0 && !showWizard) return <EmptyState onStart={() => setShowWizard(true)} />;
-  if (showWizard) return <FTUEWizard onComplete={() => setShowWizard(false)} />;
+  if (showWizard) return <FTUEWizard onComplete={handleWizardComplete} />;
 
   return (
     <section className="h-full overflow-auto p-6">
