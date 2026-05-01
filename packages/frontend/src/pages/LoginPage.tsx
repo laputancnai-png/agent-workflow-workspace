@@ -1,12 +1,45 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '../stores/auth.store.js';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
+const IS_DEV = import.meta.env.DEV;
 
 export function LoginPage() {
   const { t } = useTranslation('common');
+  const navigate = useNavigate();
+  const setAuth = useAuthStore((state) => state.setAuth);
+  const [email, setEmail] = useState('test@example.com');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleGitHubLogin = () => {
     window.location.href = `${BACKEND_URL}/api/v1/auth/login`;
+  };
+
+  const handleTestLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/test-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const json = await res.json() as { data?: { access_token: string; user: { id: string; login: string; email: string; preferred_language: 'zh-CN' | 'en' } }; error?: string };
+      if (!res.ok || !json.data) {
+        setError(json.error ?? 'test-login failed');
+        return;
+      }
+      const { access_token, user } = json.data;
+      setAuth(access_token, { id: user.id, name: user.login, email: user.email, preferred_language: user.preferred_language });
+      navigate('/workspaces');
+    } catch {
+      setError('Network error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -25,6 +58,28 @@ export function LoginPage() {
           </svg>
           Login with GitHub
         </button>
+
+        {IS_DEV && (
+          <div className="mt-6 border-t border-[var(--line)] pt-5">
+            <p className="mb-2 text-xs text-[var(--muted)]">Dev: test login</p>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--teal)]"
+              placeholder="email"
+            />
+            {error && <p className="mt-1 text-xs text-[var(--red)]">{error}</p>}
+            <button
+              type="button"
+              onClick={handleTestLogin}
+              disabled={loading}
+              className="mt-2 w-full rounded border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)] transition-colors hover:border-[var(--teal)] hover:text-[var(--teal)] disabled:opacity-50"
+            >
+              {loading ? 'Logging in…' : 'Test Login'}
+            </button>
+          </div>
+        )}
       </section>
     </main>
   );
