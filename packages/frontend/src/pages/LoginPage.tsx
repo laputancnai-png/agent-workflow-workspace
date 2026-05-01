@@ -22,7 +22,7 @@ export function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${BACKEND_URL}/api/v1/auth/test-login`, {
+      const res = await fetch('/api/v1/auth/test-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
