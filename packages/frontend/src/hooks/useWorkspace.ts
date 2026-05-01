@@ -35,12 +35,22 @@ interface CreateWorkspaceInput {
 export function useCreateWorkspace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateWorkspaceInput) =>
-      getApiClient().post<Workspace>('/api/v1/workspaces', {
+    mutationFn: (input: CreateWorkspaceInput) => {
+      let githubRepoUrl: string | undefined;
+      if (input.githubRepoUrl) {
+        const raw = input.githubRepoUrl.trim();
+        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+          githubRepoUrl = raw;
+        } else if (raw.includes('/')) {
+          githubRepoUrl = `https://github.com/${raw}`;
+        }
+      }
+      return getApiClient().post<Workspace>('/api/v1/workspaces', {
         name: input.name,
         slug: toSlug(input.name),
-        githubRepoUrl: input.githubRepoUrl || undefined,
-      }),
+        githubRepoUrl,
+      });
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
     },

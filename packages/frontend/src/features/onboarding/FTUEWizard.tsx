@@ -54,7 +54,7 @@ export function FTUEWizard({ onComplete }: FTUEWizardProps) {
           <h3 className="m-0 text-lg font-semibold text-[var(--ink)]">GitHub Repository</h3>
           <input
             className="rounded border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--blue)]"
-            placeholder="owner/repo"
+            placeholder="owner/repo  (e.g. acme/my-project, optional)"
             value={data.github_repo}
             onChange={(event) => setData((current) => ({ ...current, github_repo: event.target.value }))}
           />
