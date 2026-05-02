@@ -414,4 +414,27 @@ textarea {
   .prototype-input:focus {
     border-color: var(--accent-line);
   }
+
+  .settings-input {
+    width: 100%;
+    border: 1.5px solid rgba(0, 0, 0, 0.11);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+    padding: 7px 11px;
+    transition: border-color 0.15s;
+    appearance: none;
+  }
+
+  .settings-input:focus {
+    border-color: var(--accent-line);
+    background: rgba(255, 255, 255, 0.95);
+  }
+
+  .settings-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }

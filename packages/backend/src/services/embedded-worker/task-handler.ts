@@ -118,6 +118,7 @@ export async function handleTask(agentRunId: string, cfg: WorkerConfig): Promise
     agent_role: agentRun.agentRole,
     input_artifacts: inputArtifacts.map((a) => ({ id: a.id, role: a.role, content: a.content ?? '' })),
     preferred_provider: workspace.preferredProvider ?? 'openclaw',
+    preferred_model: workspace.preferredModel ?? undefined,
     checkpoint_data: (agentRun.checkpointData as Record<string, unknown>) ?? undefined,
     config: {
       repo_path: repoPath,

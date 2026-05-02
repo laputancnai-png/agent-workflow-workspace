@@ -45,11 +45,11 @@ export function startEmbeddedWorker(): { stop(): Promise<void> } {
 
     const runnerIds = [...runnerMap.keys()];
 
-    // Keep runners alive so the watchdog doesn't mark them offline
+    // Keep runners alive and ensure they're marked online
     if (runnerIds.length > 0) {
       await db
         .update(runners)
-        .set({ lastHeartbeatAt: new Date() })
+        .set({ status: 'online', lastHeartbeatAt: new Date() })
         .where(inArray(runners.id, runnerIds))
         .catch(() => {});
     }

@@ -3,7 +3,7 @@ import { simpleGit } from 'simple-git';
 import { BaseAgent } from './base-agent.js';
 import type { AgentRequest, AgentResponse } from './protocol.js';
 
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_MODEL = 'nvidia/qwen/qwen3-next-80b-a3b-instruct';
 
 const SYSTEM_PROMPT = `You are an expert code reviewer.
 Review the provided git diff and produce structured review comments.
@@ -31,7 +31,7 @@ export class ReviewerAgent extends BaseAgent {
 
     const response = await this.registry.complete(
       {
-        model: DEFAULT_MODEL,
+        model: req.preferred_model ?? DEFAULT_MODEL,
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: `Code diff to review:\n\n${diff || '(empty diff)'}` }],

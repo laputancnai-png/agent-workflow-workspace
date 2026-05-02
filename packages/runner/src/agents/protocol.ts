@@ -5,6 +5,7 @@ export interface AgentRequest {
   agent_role: string;
   input_artifacts: Array<{ id: string; role: string; content: string }>;
   preferred_provider: string;
+  preferred_model?: string;
   checkpoint_data?: Record<string, unknown>;
   config: {
     repo_path: string;

@@ -100,6 +100,17 @@ export async function scanOrphanedPendingSteps() {
 
     if (!pendingAgentStep) continue;
 
+    // Only reschedule if the immediately preceding step is completed
+    if (pendingAgentStep.position > 1) {
+      const prevStep = await db.query.workflowSteps.findFirst({
+        where: and(
+          eq(workflowSteps.runId, run.id),
+          eq(workflowSteps.position, pendingAgentStep.position - 1),
+        ),
+      });
+      if (prevStep && prevStep.status !== 'completed') continue;
+    }
+
     // Only reschedule if no active agent_run exists for this step
     const existingRun = await db.query.agentRuns.findFirst({
       where: and(eq(agentRuns.stepId, pendingAgentStep.id), eq(agentRuns.status, 'pending')),

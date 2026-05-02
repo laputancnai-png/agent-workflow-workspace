@@ -5,23 +5,24 @@ import { GitWorker } from '../git-worker.js';
 import { BaseAgent } from './base-agent.js';
 import type { AgentRequest, AgentResponse } from './protocol.js';
 
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_MODEL = 'nvidia/qwen/qwen3-next-80b-a3b-instruct';
 
 const SYSTEM_PROMPT = `You are an expert software engineer implementing code changes.
-Given a task list, generate ALL necessary file changes.
+Given a task list, write out the complete content of every file that needs to be created or modified.
 
-Respond ONLY with valid JSON matching this exact schema (no markdown, no explanation):
-{
-  "commit_message": "<conventional commit message, e.g. feat: add user auth>",
-  "files": [
-    { "path": "<relative path from repo root>", "content": "<complete file content>" }
-  ]
-}
+Use this exact format for each file:
+<file path="relative/path/from/repo/root">
+complete file content here
+</file>
+
+After all files, write a conventional commit message:
+<commit>feat: your descriptive commit message</commit>
 
 Rules:
-- Include COMPLETE file contents (not diffs or partial snippets)
+- Include COMPLETE file contents, not diffs or partial snippets
 - Use relative paths from repo root (e.g. "src/index.ts", not "/src/index.ts")
-- Follow existing code style and conventions`;
+- Follow existing code style and conventions
+- Write at least one <file> block and exactly one <commit> block`;
 
 interface CodeChange {
   commit_message: string;
@@ -29,8 +30,29 @@ interface CodeChange {
 }
 
 function parseCodeChange(raw: string): CodeChange {
-  const cleaned = raw.replace(/^```(?:json)?\n?|\n?```$/g, '').trim();
-  return JSON.parse(cleaned) as CodeChange;
+  const files: Array<{ path: string; content: string }> = [];
+
+  const filePattern = /<file\s+path="([^"]+)">([\s\S]*?)<\/file>/g;
+  let match: RegExpExecArray | null;
+  while ((match = filePattern.exec(raw)) !== null) {
+    const filePath = match[1].trim();
+    const content = match[2].replace(/^\n/, '').replace(/\n$/, '');
+    if (filePath) {
+      files.push({ path: filePath, content });
+    }
+  }
+
+  const commitMatch = /<commit>([\s\S]*?)<\/commit>/i.exec(raw);
+  const commit_message = commitMatch ? commitMatch[1].trim() : 'chore: implement task list';
+
+  if (files.length === 0) {
+    // Fallback: try JSON in case some provider returns it
+    const cleaned = raw.replace(/^```(?:json)?\n?|\n?```$/g, '').trim();
+    const parsed = JSON.parse(cleaned) as CodeChange;
+    return parsed;
+  }
+
+  return { commit_message, files };
 }
 
 export class CoderAgent extends BaseAgent {
@@ -41,13 +63,23 @@ export class CoderAgent extends BaseAgent {
 
     const response = await this.registry.complete(
       {
-        model: DEFAULT_MODEL,
+        model: req.preferred_model ?? DEFAULT_MODEL,
         max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: `Task List:\n\n${taskList}` }],
       },
       req.preferred_provider,
     );
+
+    if (response.content === 'NO_REPLY' || response.content.trim() === '') {
+      return {
+        type: 'fail',
+        agent_run_id: req.agent_run_id,
+        error_code: 'NO_REPLY',
+        error_message: 'LLM returned no content — session may have been rejected by the gateway',
+        retryable: true,
+      };
+    }
 
     let change: CodeChange;
     try {
@@ -57,7 +89,7 @@ export class CoderAgent extends BaseAgent {
         type: 'fail',
         agent_run_id: req.agent_run_id,
         error_code: 'PARSE_ERROR',
-        error_message: `Failed to parse LLM response as JSON: ${response.content.slice(0, 200)}`,
+        error_message: `Failed to parse LLM response: ${response.content.slice(0, 200)}`,
         retryable: true,
       };
     }

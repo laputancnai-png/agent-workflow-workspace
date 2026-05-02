@@ -31,6 +31,11 @@
       "types": "./src/git-worker.ts",
       "import": "./src/git-worker.ts",
       "default": "./src/git-worker.ts"
+    },
+    "./providers": {
+      "types": "./src/providers/index.ts",
+      "import": "./src/providers/index.ts",
+      "default": "./src/providers/index.ts"
     }
   },
   "scripts": {

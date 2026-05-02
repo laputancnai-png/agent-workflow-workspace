@@ -2,6 +2,9 @@ import { and, desc, eq, inArray, or } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
+import { AnthropicAdapter, HermesAdapter, NoProviderError, OpenAIAdapter, OpenClawAdapter, ProviderRegistry } from '@aww/runner/providers';
+import { loadWorkerConfig } from '../services/embedded-worker/config.js';
+
 import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
 import { decisions } from '../db/schema/decisions.js';
@@ -100,8 +103,15 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: 'invalid_workspace', issues: parsed.error.issues });
     }
 
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
+
     const member = await db.query.workspaceMembers.findFirst({
-      where: and(eq(workspaceMembers.workspaceId, id), eq(workspaceMembers.userId, userId)),
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
     });
     if (!member || !['owner', 'admin'].includes(member.role)) {
       return reply.code(403).send({ error: 'forbidden' });
@@ -117,7 +127,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
         ...(parsed.data.preferredProvider !== undefined && { preferredProvider: parsed.data.preferredProvider }),
         ...(parsed.data.preferredModel !== undefined && { preferredModel: parsed.data.preferredModel }),
       })
-      .where(eq(workspaces.id, id))
+      .where(eq(workspaces.id, workspace.id))
       .returning();
 
     if (!updated) {
@@ -125,6 +135,66 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return { data: updated };
+  });
+
+  app.post('/:id/test-provider', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    const cfg = loadWorkerConfig();
+    const preferredProvider = workspace.preferredProvider ?? 'openclaw';
+
+    const adapters = [
+      cfg.providers.openclaw ? new OpenClawAdapter(cfg.providers.openclaw) : null,
+      cfg.providers.anthropic ? new AnthropicAdapter(cfg.providers.anthropic) : null,
+      cfg.providers.openai ? new OpenAIAdapter(cfg.providers.openai) : null,
+      cfg.providers.hermes ? new HermesAdapter(cfg.providers.hermes) : null,
+    ].filter((a) => a !== null);
+
+    if (adapters.length === 0) {
+      return { data: { ok: false, error: `未配置任何 provider（当前: ${preferredProvider}）。请在服务器环境变量中设置 OPENCLAW_GATEWAY_URL 或 ANTHROPIC_API_KEY 等。` } };
+    }
+
+    const registry = new ProviderRegistry(adapters);
+    await registry.probe();
+
+    const available = registry.availableIds();
+    if (!available.includes(preferredProvider)) {
+      const allDown = available.length === 0;
+      return {
+        data: {
+          ok: false,
+          error: allDown
+            ? `所有 provider 均不可用（已配置: ${adapters.map((a) => a.id).join(', ')}）`
+            : `当前 provider "${preferredProvider}" 不可用，可用的有: ${available.join(', ')}`,
+        },
+      };
+    }
+
+    try {
+      const response = await registry.complete(
+        {
+          model: workspace.preferredModel ?? 'nvidia/qwen/qwen3-next-80b-a3b-instruct',
+          max_tokens: 128,
+          messages: [{ role: 'user', content: 'Hi! Reply with just one short greeting in Chinese.' }],
+        },
+        preferredProvider,
+      );
+      return { data: { ok: true, response: response.content.trim(), provider: preferredProvider } };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { data: { ok: false, error: msg } };
+    }
   });
 
   app.delete('/:id', async (request, reply) => {

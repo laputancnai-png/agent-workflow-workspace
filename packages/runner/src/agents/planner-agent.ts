@@ -1,7 +1,7 @@
 import { BaseAgent } from './base-agent.js';
 import type { AgentRequest, AgentResponse } from './protocol.js';
 
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_MODEL = 'nvidia/qwen/qwen3-next-80b-a3b-instruct';
 
 const SYSTEM_PROMPT = `You are an expert software engineer creating engineering plans.
 Given a Product Requirements Document (PRD), produce a structured engineering plan including:
@@ -19,7 +19,7 @@ export class PlannerAgent extends BaseAgent {
 
     const response = await this.registry.complete(
       {
-        model: DEFAULT_MODEL,
+        model: req.preferred_model ?? DEFAULT_MODEL,
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: `PRD:\n\n${prd}` }],
@@ -27,11 +27,28 @@ export class PlannerAgent extends BaseAgent {
       req.preferred_provider,
     );
 
+    const content = response.content.trim();
+    const isPlaceholder =
+      content === 'NO_REPLY' ||
+      content.length < 100 ||
+      /no (engineering |prd |plan )?(was |is )?(provided|given|found|available)/i.test(content) ||
+      /please (share|provide|paste)/i.test(content);
+
+    if (isPlaceholder) {
+      return {
+        type: 'fail',
+        agent_run_id: req.agent_run_id,
+        error_code: 'BAD_OUTPUT',
+        error_message: `Planner produced placeholder output: ${content.slice(0, 100)}`,
+        retryable: true,
+      };
+    }
+
     return {
       type: 'complete',
       agent_run_id: req.agent_run_id,
       tokens_used: response.tokens_used,
-      output_artifacts: [{ role: 'PLAN', content: response.content }],
+      output_artifacts: [{ role: 'PLAN', content }],
     };
   }
 }

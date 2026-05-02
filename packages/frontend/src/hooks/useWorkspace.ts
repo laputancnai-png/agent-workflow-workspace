@@ -39,6 +39,38 @@ interface CreateWorkspaceInput {
   preferredModel?: string;
 }
 
+interface UpdateWorkspaceInput {
+  name?: string;
+  githubRepoUrl?: string | null;
+  defaultBranch?: string;
+  preferredProvider?: string;
+  preferredModel?: string;
+}
+
+export function useUpdateWorkspace(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateWorkspaceInput) => {
+      let githubRepoUrl = input.githubRepoUrl;
+      if (typeof githubRepoUrl === 'string' && githubRepoUrl.trim() !== '') {
+        const raw = githubRepoUrl.trim();
+        if (!raw.startsWith('http://') && !raw.startsWith('https://') && raw.includes('/')) {
+          githubRepoUrl = `https://github.com/${raw}`;
+        }
+      }
+      return getApiClient().patch<Workspace>(`/api/v1/workspaces/${slug}`, {
+        ...input,
+        githubRepoUrl,
+      });
+    },
+    onSuccess: (workspace) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace', slug] });
+      void queryClient.invalidateQueries({ queryKey: ['workspace', workspace.id] });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+    },
+  });
+}
+
 export function useCreateWorkspace() {
   const queryClient = useQueryClient();
   return useMutation({
