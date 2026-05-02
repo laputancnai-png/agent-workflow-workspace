@@ -16,6 +16,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.600.0
         version: 3.1035.0
+      '@aww/runner':
+        specifier: workspace:*
+        version: link:../runner
       '@fastify/cookie':
         specifier: ^9.0.0
         version: 9.4.0

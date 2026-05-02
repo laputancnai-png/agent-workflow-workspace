@@ -1,10 +1,10 @@
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { agentRuns, runners } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { publishEvent } from '../lib/sse.js';
-import { requeueStep } from '../services/scheduler.js';
+import { scheduleNextStep, requeueStep } from '../services/scheduler.js';
 import { agentRunTimedOut } from '../services/state-machine.js';
 
 const AGENT_RUN_TIMEOUT_SECONDS = 120;
@@ -71,9 +71,55 @@ export async function scanTimedOutAgentRuns(now = new Date()) {
   return timedOut.length;
 }
 
+/**
+ * Reschedule agent steps that are stuck in `pending` state because no runner
+ * was available when the scheduler first tried. Runs whenever a runner is online.
+ */
+export async function scanOrphanedPendingSteps() {
+  // Find active runs that have at least one online runner in their workspace
+  const activeRuns = await db
+    .select({ id: workflowRuns.id, workspaceId: workflowRuns.workspaceId })
+    .from(workflowRuns)
+    .where(eq(workflowRuns.status, 'running'));
+
+  for (const run of activeRuns) {
+    const onlineRunner = await db.query.runners.findFirst({
+      where: and(eq(runners.workspaceId, run.workspaceId), eq(runners.status, 'online')),
+    });
+    if (!onlineRunner) continue;
+
+    // Find the earliest pending agent step with no agent_run assigned
+    const pendingAgentStep = await db.query.workflowSteps.findFirst({
+      where: and(
+        eq(workflowSteps.runId, run.id),
+        eq(workflowSteps.status, 'pending'),
+        eq(workflowSteps.ownerType, 'agent'),
+      ),
+      orderBy: (ws, { asc }) => [asc(ws.position)],
+    });
+
+    if (!pendingAgentStep) continue;
+
+    // Only reschedule if no active agent_run exists for this step
+    const existingRun = await db.query.agentRuns.findFirst({
+      where: and(eq(agentRuns.stepId, pendingAgentStep.id), eq(agentRuns.status, 'pending')),
+    });
+    if (existingRun) continue;
+
+    // Trigger rescheduling via the scheduler (reuses the same logic)
+    await scheduleNextStep(run.id, pendingAgentStep.position - 1).catch((err: unknown) => {
+      process.stderr.write(`[watchdog] reschedule failed for step ${pendingAgentStep.id}: ${String(err)}\n`);
+    });
+  }
+}
+
 export function startWatchdog() {
   return setInterval(() => {
-    Promise.all([scanTimedOutAgentRuns(), scanTimedOutRunners()]).catch((error: unknown) => {
+    Promise.all([
+      scanTimedOutAgentRuns(),
+      scanTimedOutRunners(),
+      scanOrphanedPendingSteps(),
+    ]).catch((error: unknown) => {
       console.error('[watchdog] error:', error);
     });
   }, SCAN_INTERVAL_MS);

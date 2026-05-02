@@ -10,6 +10,7 @@ import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers, workspaces } from '../db/schema/workspaces.js';
 import { getRedis } from '../lib/redis.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
+import { registerEmbeddedRunnerForWorkspace } from '../services/embedded-worker/index.js';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1).max(128),
@@ -59,6 +60,10 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       workspaceId: workspace.id,
       userId,
       role: 'owner',
+    });
+
+    await registerEmbeddedRunnerForWorkspace(workspace.id).catch((err) => {
+      app.log.warn({ err }, 'embedded runner registration failed for new workspace');
     });
 
     return reply.code(201).send({ data: workspace });

@@ -3,12 +3,12 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { agentRuns, runners } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
-import { getRedis } from '../lib/redis.js';
 import { publishEvent } from '../lib/sse.js';
 
 async function scheduleAgentStep(
   step: typeof workflowSteps.$inferSelect,
   run: typeof workflowRuns.$inferSelect,
+  attemptNumber = 1,
 ): Promise<void> {
   const runner = await db.query.runners.findFirst({
     where: and(eq(runners.workspaceId, run.workspaceId), eq(runners.status, 'online')),
@@ -22,17 +22,15 @@ async function scheduleAgentStep(
     return;
   }
 
-  const [agentRun] = await db
+  await db
     .insert(agentRuns)
     .values({
       stepId: step.id,
       runnerId: runner.id,
       status: 'pending',
       agentRole: step.agentRole!,
-    })
-    .returning();
-
-  await getRedis().lpush(`runner:queue:${runner.id}`, agentRun.id);
+      attemptNumber,
+    });
 
   await db.update(workflowSteps)
     .set({ status: 'running', updatedAt: new Date() })
@@ -67,14 +65,14 @@ export async function scheduleNextStep(runId: string, completedStepPosition: num
   }
 }
 
-export async function requeueStep(stepId: string): Promise<void> {
+export async function requeueStep(stepId: string, prevAttemptNumber = 1): Promise<void> {
   const step = await db.query.workflowSteps.findFirst({ where: eq(workflowSteps.id, stepId) });
   if (!step || !step.agentRole) return;
 
   const run = await db.query.workflowRuns.findFirst({ where: eq(workflowRuns.id, step.runId) });
   if (!run) return;
 
-  await scheduleAgentStep(step, run);
+  await scheduleAgentStep(step, run, prevAttemptNumber + 1);
 }
 
 export async function failRun(runId: string, workspaceId: string): Promise<void> {

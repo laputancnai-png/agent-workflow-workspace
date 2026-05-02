@@ -34,6 +34,10 @@ const ackParams = z.object({
 
 export const runnerRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post('/register', { schema: { body: registerBody } }, async (request, reply) => {
+    if (process.env.REMOTE_RUNNERS_ENABLED !== 'true') {
+      return reply.code(404).send({ error: 'remote_runners_disabled' });
+    }
+
     const { registration_token, machine_id, capabilities } = request.body;
 
     const redis = getRedis();

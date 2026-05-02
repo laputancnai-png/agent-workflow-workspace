@@ -4,64 +4,119 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agent Workflow Workspace** is a human-in-the-loop software delivery system where teams define repeatable workflows (PRD → Plan → Human Approval → Task Breakdown → Agent Implementation → Test → Agent Review → Human Final Review → PR Summary), assign steps to humans or AI agents, and maintain a complete audit trail.
+**Agent Workflow Workspace (AWW)** is a human-in-the-loop software delivery system where teams define repeatable workflows (PRD → Plan → Human Approval → Task Breakdown → Agent Implementation → Test → Agent Review → Human Final Review → PR Summary), assign steps to humans or AI agents, and maintain a complete audit trail.
 
-Current phase: **static UI prototype** — no build system, no npm, no framework.
+Current phase: **full-stack monorepo** — Fastify backend, React frontend, and an embedded agent worker.
 
 ## Project Structure
 
 ```
 agent-workflow-workspace/
-└── docs/
-    └── PRD.md       # Full product requirements document (20 sections)
-    └── AWW Prototype_v2.html       # Complete single-file UI prototype (HTML + CSS + JS inline)
+├── packages/
+│   ├── backend/    Fastify 4 + Drizzle ORM + PostgreSQL
+│   │   └── src/
+│   │       ├── db/schema/          Drizzle table definitions (camelCase fields)
+│   │       ├── routes/             Fastify route handlers
+│   │       ├── services/
+│   │       │   ├── embedded-worker/  In-process agent runner (no separate daemon needed)
+│   │       │   │   ├── config.ts     Env-var driven WorkerConfig
+│   │       │   │   ├── index.ts      startEmbeddedWorker() / registerEmbeddedRunnerForWorkspace()
+│   │       │   │   ├── runner-record.ts  Upsert/offline runner DB record
+│   │       │   │   └── task-handler.ts   claimNextTask() / handleTask()
+│   │       │   ├── scheduler.ts    scheduleNextStep() / requeueStep()
+│   │       │   └── state-machine.ts
+│   │       └── lib/                SSE relay, Redis, R2
+│   ├── frontend/   React 18 + Vite + TanStack Query + Zustand
+│   └── runner/     Agent executor library (imported by backend; also standalone CLI)
+│       └── src/
+│           ├── executor.ts         AgentExecutor — spawns dispatcher as child process
+│           ├── agents/dispatcher.ts  Entry point for each agent subprocess
+│           ├── repo-manager.ts     Git repo clone/pull
+│           └── git-worker.ts       Feature branch management
+├── docs/
+│   ├── PRD.md                 Full product requirements (20 sections)
+│   └── LOCAL_DEV_RUNBOOK.md   First-time setup guide
+└── docker-compose.yml         PostgreSQL 16 (port 5432) + Redis 7 (port 6379)
 ```
 
-## Working with the Prototype
+## Embedded Worker (Key Architecture)
 
-The entire UI lives in `AWW Prototype_v2.html`. To preview it, open it directly in a browser — no server needed:
+The backend runs agent tasks **in-process** — no separate runner daemon is required for self-hosted deployment.
+
+On startup (`src/index.ts`), `startEmbeddedWorker()` is called. It:
+1. Queries all existing workspaces and calls `upsertEmbeddedRunner()` for each
+2. Starts a poll loop every `WORKER_POLL_INTERVAL_MS` (default 2 s)
+3. For each registered runner ID, calls `claimNextTask()` → `handleTask()`
+
+When a **new workspace is created** (`routes/workspaces.ts`), `registerEmbeddedRunnerForWorkspace()` is called automatically.
+
+The embedded runner is visible in the UI as a regular runner with `machineId = 'embedded'` (configurable via `WORKER_MACHINE_ID`).
+
+### Key environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKER_ENABLED` | `true` | Set `false` to disable embedded worker |
+| `WORKER_MACHINE_ID` | `embedded` | Runner identity shown in UI |
+| `WORKER_POLL_INTERVAL_MS` | `2000` | Task poll frequency |
+| `ANTHROPIC_API_KEY` | — | Anthropic provider (at least one required) |
+| `OPENCLAW_GATEWAY_URL` | — | OpenClaw provider |
+| `REMOTE_RUNNERS_ENABLED` | `false` | Allow external runner registration via API |
+
+See `packages/backend/.env.example` for all variables.
+
+## Development Commands
 
 ```bash
-open AWW Prototype_v2.html
+# Install all workspace dependencies
+pnpm install
+
+# Start infrastructure (Postgres + Redis)
+docker compose up -d
+
+# Run database migrations
+pnpm --filter @aww/backend db:migrate
+
+# Start backend (port 3000) — embedded worker starts automatically
+pnpm --filter @aww/backend dev
+
+# Start frontend (port 5173)
+pnpm --filter @aww/frontend dev
+
+# Run tests
+pnpm --filter @aww/backend test
+pnpm --filter @aww/frontend test
+pnpm --filter @aww/runner test
 ```
 
-There is no build step, no package manager, no compilation. All CSS and JavaScript are inline in the single HTML file.
+## Data Model
 
-## UI Architecture
+**Drizzle ORM returns camelCase field names** — always use camelCase in TypeScript interfaces (`contentInline`, `createdAt`, `workspaceId`). Never use snake_case for ORM results.
 
-The prototype demonstrates the full end-to-end workflow UI:
+Key tables:
+- `workspaces` — project areas
+- `workspace_members` — user ↔ workspace membership (role: owner/member)
+- `workflow_runs` — a running instance of the 9-step workflow
+- `workflow_steps` — individual steps with `ownerType` (human/agent/approval_gate)
+- `artifacts` — step outputs, stored inline ≤64KB or in R2/S3 via `blobKey`
+- `runners` — registered agents (embedded or remote); tied to a `workspaceId`
+- `agent_runs` — individual agent task executions with `status` (pending/running/completed/failed)
+- `decisions` — human approval decisions per step
 
-- **Left rail** — primary navigation (Workspace, Workflows, Agents, Artifacts, Settings icons)
-- **Workflow panel** (left sidebar, `grid-row: 1/3`) — 9-step workflow list with step status icons and states (`done`, `active`, `pending`, `agent`, `review`)
-- **Center panel** — current step detail: step brief with inputs/acceptance/human-options, agent stack sidebar, and handoff map showing all workflow nodes
-- **Right panel** — human approval gate controls (Approve / Request Changes / Edit Output / Rerun / Take Over), artifact list, agent run list, decision history
-- **Bottom-left** — code diff view (`code-view` with `.add`/`.remove`/`.muted`/`.file` classes, dark theme)
-- **Bottom-right** — audit trail feed with colored dots (green/amber/blue)
-
-Layout uses CSS Grid: `app-shell` is `72px nav + main`, workspace is `288px | 1fr | 340px` columns with `1fr | 268px` rows.
-
-### CSS Design Tokens
-
-All colors defined as CSS variables in `:root`: `--blue`, `--teal`, `--green`, `--amber`, `--red`, `--violet`, `--bg`, `--surface`, `--surface-soft`, `--ink`, `--muted`, `--line`, `--line-strong`, `--shadow`.
-
-### Step State Classes
-
-Step icons use: `.done` (green), `.active` (amber), `.pending` (gray), `.agent` (teal), `.review` (violet).
-
-Agent avatars: `.planner` (blue), `.tasker` (teal), `.coder` (green), `.tester` (amber), `.reviewer` (violet).
-
-## Core Concepts (from PRD)
+## Core Concepts
 
 - **Workspace** — persistent project area containing all artifacts, decisions, and logs
-- **WorkflowStep** — has `owner_type` (human/agent/approval-gate), input/output artifact IDs, retry policy
-- **Artifact** — durable output per step (plan, task list, code diff, test log, review findings, approval decision, PR description)
+- **WorkflowStep** — has `ownerType` (human/agent/approval_gate), input/output artifact IDs, retry policy
+- **Artifact** — durable output per step (plan, task list, code diff, test log, review findings, PR description)
 - **Human Step-In** — approve | reject | edit | request changes | redirect | take over
-- **Agent Roles** — Planner, Task Breakdown, Coding, Test, Review, Summarizer
+- **Agent Roles** — planner, task_breakdown, coder, tester, reviewer, summarizer
 
 ## MVP Workflow (9 steps)
 
-1. Create Workspace → 2. Add PRD → 3. Generate Engineering Plan (human approval gate) → 4. Break Into Tasks (human gate) → 5. Implement Scoped Tasks → 6. Run Tests → 7. Human Final Review (approval gate) → 8. Generate PR Summary → 9. Open Pull Request
+1. Create Workspace → 2. Add PRD → 3. Generate Engineering Plan (human gate) → 4. Break Into Tasks (human gate) → 5. Implement Scoped Tasks → 6. Run Tests → 7. Human Final Review (approval gate) → 8. Generate PR Summary → 9. Open Pull Request
 
-## Data Model (from PRD §14)
+## Known Constraints
 
-Key entities: `Workspace`, `WorkflowRun`, `WorkflowStep`, `Artifact`, `Decision`, `AgentRun`. See `docs/PRD.md` sections 8 and 14 for full field definitions.
+- `runners` table requires `workspaceId` (NOT NULL FK) — embedded runner is registered per workspace
+- Redis is still required for SSE relay and audit stream (`xadd`/`xrevrange`) even in embedded mode
+- TypeScript rootDir for backend is `src/` — cross-package imports must use runner's `exports` field

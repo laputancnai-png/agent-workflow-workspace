@@ -11,12 +11,15 @@ PRD → Engineering Plan (human gate) → Task Breakdown (human gate) → Implem
 
 ```
 packages/
-├── backend/    Fastify + Drizzle ORM + PostgreSQL + Redis
+├── backend/    Fastify + Drizzle ORM + PostgreSQL
+│              └── embedded-worker: runs agent tasks in-process (no separate daemon)
 ├── frontend/   React + Vite + TanStack Query
-└── runner/     Node.js daemon — runs LLM agents on your machine
+└── runner/     Agent executor library (also standalone CLI for advanced setups)
 ```
 
-Infrastructure: PostgreSQL 16 (task queue + artifacts) · Redis 7 (pubsub + SSE relay)
+Infrastructure: PostgreSQL 16 (all state + artifacts) · Redis 7 (SSE relay + audit stream)
+
+The backend includes an **embedded agent worker** — on startup it polls the database for pending tasks and dispatches them to the configured LLM provider. No separate runner process is needed for typical self-hosted deployments.
 
 ---
 
@@ -103,39 +106,23 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ---
 
-## Local Runner Setup
+## Configuring LLM Providers
 
-The Runner daemon runs LLM agents on your machine and picks up tasks from the backend.
-
-### 1. Register a runner
-
-In the AWW UI, create a workspace and generate a registration token, then:
+The embedded worker needs at least one LLM provider configured in `packages/backend/.env`:
 
 ```bash
-pnpm --filter @aww/runner dev runner:register \
-  --token <registration-token> \
-  --url http://localhost:3000 \
-  --workspace <workspace-id>
+# Anthropic (recommended)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# OpenAI
+OPENAI_API_KEY=sk-...
+
+# OpenClaw (self-hosted LLM gateway)
+OPENCLAW_GATEWAY_URL=http://localhost:18789
+OPENCLAW_API_KEY=optional-key
 ```
 
-This writes credentials to `~/.aww/config.toml`.
-
-### 2. Configure LLM providers
-
-Edit `~/.aww/config.toml` (use `packages/runner/config.example.toml` as reference):
-
-```toml
-[providers.anthropic]
-api_key = "sk-ant-..."
-```
-
-At least one provider is required. Supported: `anthropic`, `openai`, `openclaw`, `hermes`.
-
-### 3. Start the runner
-
-```bash
-pnpm --filter @aww/runner dev runner:start
-```
+The worker starts automatically with the backend — no separate process is required.
 
 ---
 
@@ -160,7 +147,7 @@ pnpm --filter @aww/frontend exec playwright test
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `REDIS_URL` | Yes | `redis://localhost:6379` | Redis connection string |
+| `REDIS_URL` | Yes | `redis://localhost:6379` | Redis (SSE relay + audit stream) |
 | `JWT_SECRET` | Yes | — | Access token signing key (32+ chars) |
 | `REFRESH_SECRET` | Yes | — | Refresh token signing key (32+ chars) |
 | `PORT` | No | `3000` | Backend listen port |
@@ -174,6 +161,11 @@ pnpm --filter @aww/frontend exec playwright test
 | `R2_ACCESS_KEY` | No | — | R2 access key |
 | `R2_SECRET_KEY` | No | — | R2 secret key |
 | `R2_BUCKET` | No | — | R2 bucket name |
+| `WORKER_ENABLED` | No | `true` | Set `false` to disable the embedded agent worker |
+| `ANTHROPIC_API_KEY` | No | — | Anthropic provider for agent tasks |
+| `OPENAI_API_KEY` | No | — | OpenAI provider for agent tasks |
+| `OPENCLAW_GATEWAY_URL` | No | — | OpenClaw gateway for agent tasks |
+| `REMOTE_RUNNERS_ENABLED` | No | `false` | Allow external runner registration |
 
 ### Frontend (`packages/frontend/.env`)
 

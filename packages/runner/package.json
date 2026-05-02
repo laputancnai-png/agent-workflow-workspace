@@ -6,6 +6,33 @@
   "bin": {
     "aww": "./dist/cli.js"
   },
+  "exports": {
+    "./executor": {
+      "types": "./src/executor.ts",
+      "import": "./src/executor.ts",
+      "default": "./src/executor.ts"
+    },
+    "./redact": {
+      "types": "./src/redact.ts",
+      "import": "./src/redact.ts",
+      "default": "./src/redact.ts"
+    },
+    "./agents/protocol": {
+      "types": "./src/agents/protocol.ts",
+      "import": "./src/agents/protocol.ts",
+      "default": "./src/agents/protocol.ts"
+    },
+    "./repo-manager": {
+      "types": "./src/repo-manager.ts",
+      "import": "./src/repo-manager.ts",
+      "default": "./src/repo-manager.ts"
+    },
+    "./git-worker": {
+      "types": "./src/git-worker.ts",
+      "import": "./src/git-worker.ts",
+      "default": "./src/git-worker.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/cli.ts",

@@ -1,5 +1,5 @@
-import { createWriteStream, mkdirSync } from 'node:fs';
-import { unlink } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
+import { open, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,12 +20,16 @@ export class GitWorker {
   }
 
   private async withLock<T>(fn: () => Promise<T>) {
-    const lockStream = createWriteStream(this.lockPath, { flags: 'wx' });
+    // Attempt exclusive creation; ignore EEXIST (stale lock from a crashed process)
+    const fd = await open(this.lockPath, 'wx').catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'EEXIST') return null;
+      throw err;
+    });
 
     try {
       return await fn();
     } finally {
-      lockStream.close();
+      if (fd) await fd.close().catch(() => {});
       await unlink(this.lockPath).catch(() => {});
     }
   }
