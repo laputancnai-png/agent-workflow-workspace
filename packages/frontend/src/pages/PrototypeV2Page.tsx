@@ -10,7 +10,7 @@ export function PrototypeV2Page() {
     const reload = () => setReloadKey((value) => value + 1);
     import.meta.hot.on('vite:afterUpdate', reload);
     return () => {
-      import.meta.hot?.off('vite:afterUpdate', reload);
+      import.meta.hot?.off?.('vite:afterUpdate', reload);
     };
   }, []);
 
