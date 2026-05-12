@@ -33,6 +33,8 @@ function serializeRun(run: typeof workflowRuns.$inferSelect) {
     workspace_id: run.workspaceId,
     status: run.status,
     feature_branch: run.featureBranch ?? undefined,
+    created_at: run.createdAt.toISOString(),
+    updated_at: run.updatedAt.toISOString(),
   };
 }
 

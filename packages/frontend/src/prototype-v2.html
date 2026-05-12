@@ -1839,8 +1839,10 @@ function App(){
   const createRun=async()=>{
     if(!activeWorkspace)return;
     const j=await apiJson(`/api/v1/workspaces/${activeWorkspace.id}/runs`,{method:'POST',body:JSON.stringify({template_id:'builtin-9step'})});
-    setActiveRun(j.data);
     await loadRuns(workspaces);
+    // Override whatever loadRuns selected — new run must be active
+    const detail=await apiJson(`/api/v1/runs/${j.data.id}`);
+    setActiveRun(detail.data);
   };
   const createWorkspaceFromWizard=async(data)=>{
     const slugBase=slugifyName(data.name);
