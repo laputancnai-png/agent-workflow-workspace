@@ -4,10 +4,13 @@ import { z } from 'zod';
 
 import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
+import { decisions } from '../db/schema/decisions.js';
+import { agentRuns } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
 import { BUILTIN_9STEP_TEMPLATE } from '../lib/templates.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
+import { scheduleNextStep } from '../services/scheduler.js';
 
 const createRunSchema = z.object({
   template_id: z.literal(BUILTIN_9STEP_TEMPLATE.id),
@@ -22,6 +25,7 @@ function serializeStep(step: typeof workflowSteps.$inferSelect, artifactIds: str
     owner_type: step.ownerType,
     agent_role: step.agentRole ?? undefined,
     output_artifact_ids: artifactIds,
+    output_artifact_roles: step.outputArtifactRoles,
     updated_at: step.updatedAt.toISOString(),
   };
 }
@@ -32,11 +36,26 @@ function serializeRun(run: typeof workflowRuns.$inferSelect) {
     workspace_id: run.workspaceId,
     status: run.status,
     feature_branch: run.featureBranch ?? undefined,
+    created_at: run.createdAt.toISOString(),
+    updated_at: run.updatedAt.toISOString(),
   };
 }
 
 export const runRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireUser);
+
+  app.get('/:workspaceId/runs', async (request, reply) => {
+    const { workspaceId } = request.params as { workspaceId: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    const runs = await db.select().from(workflowRuns).where(eq(workflowRuns.workspaceId, workspaceId));
+    return { data: runs.map(serializeRun) };
+  });
 
   app.post('/:workspaceId/runs', async (request, reply) => {
     const { workspaceId } = request.params as { workspaceId: string };
@@ -83,10 +102,13 @@ export const runRoutes: FastifyPluginAsync = async (app) => {
       )
       .returning();
 
+    await scheduleNextStep(run.id, 0);
+
+    const updatedSteps = await db.select().from(workflowSteps).where(eq(workflowSteps.runId, run.id));
     return reply.code(201).send({
       data: {
         ...serializeRun(run),
-        steps: steps.map((s) => serializeStep(s, [])),
+        steps: updatedSteps.map((s) => serializeStep(s, [])),
       },
     });
   });
@@ -140,5 +162,35 @@ export const runDetailRoutes: FastifyPluginAsync = async (app) => {
         steps: steps.map((s) => serializeStep(s, artifactsByStep.get(s.id) ?? [])),
       },
     };
+  });
+
+  app.get('/runs/:runId/audit', async (request, reply) => {
+    const { runId } = request.params as { runId: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
+    const run = await db.query.workflowRuns.findFirst({ where: eq(workflowRuns.id, runId) });
+    if (!run) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, run.workspaceId), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    const steps = await db.select().from(workflowSteps).where(eq(workflowSteps.runId, runId));
+    const stepIds = steps.map((s) => s.id);
+
+    const [stepDecisions, stepAgentRuns] = await Promise.all([
+      stepIds.length > 0 ? db.select().from(decisions).where(inArray(decisions.stepId, stepIds)) : [],
+      stepIds.length > 0 ? db.select().from(agentRuns).where(inArray(agentRuns.stepId, stepIds)) : [],
+    ]);
+
+    const events = [
+      { time: run.createdAt.toISOString(), type: 'run.created', message: `WorkflowRun ${run.id} created` },
+      ...steps.map((s) => ({ time: s.updatedAt.toISOString(), type: `step.${s.status}`, message: `Step ${s.position}: ${s.name} — ${s.status}` })),
+      ...stepDecisions.map((d) => ({ time: d.createdAt.toISOString(), type: `decision.${d.action}`, message: `Decision: ${d.action}${d.comment ? ` — ${d.comment}` : ''}` })),
+      ...stepAgentRuns.map((ar) => ({ time: ar.updatedAt.toISOString(), type: `agent_run.${ar.status}`, message: `Agent run (${ar.agentRole}) — ${ar.status}` })),
+    ].sort((a, b) => a.time.localeCompare(b.time));
+
+    return { data: events };
   });
 };

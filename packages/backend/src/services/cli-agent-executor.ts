@@ -9,7 +9,7 @@ import { workspaces } from '../db/schema/workspaces.js';
 import { publishEvent } from '../lib/sse.js';
 import { publishWorkspaceToGitHub } from './github-publisher.js';
 import { scheduleNextStep } from './scheduler.js';
-import { commitWorkspaceCode, workspaceCodePath, writeArtifactDoc } from './workspace-files.js';
+import { checkoutWorkspaceBranch, commitWorkspaceCode, workspaceCodePath, writeArtifactDoc } from './workspace-files.js';
 
 type ArtifactRole = typeof artifacts.$inferSelect.role;
 
@@ -51,12 +51,13 @@ function argsFor(provider: string, prompt: string, codeDir: string) {
   switch (provider) {
     case 'codex':
       return { command: 'codex', args: ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--color', 'never', '--cd', codeDir, prompt] };
+    case 'anthropic':
     case 'claude':
       return { command: 'claude', args: ['--print', prompt, '--output-format', 'text', '--permission-mode', 'acceptEdits', '--add-dir', codeDir] };
     case 'openclaw':
       return { command: 'openclaw', args: ['agent', '--local', '--agent', 'main', '--message', prompt, '--timeout', '120'] };
     case 'hermes':
-      return { command: 'hermes', args: ['chat', '-q', prompt] };
+      return { command: 'hermes', args: ['chat', '-Q', '-q', prompt] };
     default:
       return { command: 'codex', args: ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--color', 'never', '--cd', codeDir, prompt] };
   }
@@ -179,6 +180,14 @@ export async function executeCliAgentRun(agentRunId: string): Promise<void> {
   if (!workspace) return;
 
   const codeDir = await workspaceCodePath(workspace);
+
+  // Ensure coder works on a feature branch, not the base branch.
+  if (agentRun.agentRole === 'coder' && !run.featureBranch) {
+    const featureBranch = `feat/aww-${run.id.slice(0, 8)}`;
+    await checkoutWorkspaceBranch(workspace, featureBranch);
+    await db.update(workflowRuns).set({ featureBranch, updatedAt: new Date() }).where(eq(workflowRuns.id, run.id));
+  }
+
   const provider = workspace.preferredProvider || 'codex';
   const inputArtifacts = await loadInputArtifacts(run.id, agentRun.agentRole);
   const prompt = promptFor(agentRun.agentRole, workspace.name, codeDir, inputArtifacts);
@@ -193,16 +202,24 @@ export async function executeCliAgentRun(agentRunId: string): Promise<void> {
   }).where(eq(agentRuns.id, agentRun.id));
   const { command, args } = argsFor(provider, prompt, codeDir);
   const result = await runCommand(command, args, codeDir);
-  let stepOk = result.ok;
 
+  // Some CLIs (e.g. hermes) exit 0 even when they hit an API error; detect this.
+  const hasCliError = /api call failed|rate limit|final error:|authentication failed|unauthorized/i.test(result.output);
+  let stepOk = result.ok && !hasCliError;
+
+  // Strip CLI session metadata lines that leak into stdout (e.g. hermes -Q outputs "session_id: xxx").
+  const cleanOutput = result.output
+    .split('\n')
+    .filter((line) => !/^session_id:\s/i.test(line))
+    .join('\n')
+    .trim();
+
+  // contentInline stores only the agent's substantive output, not execution metadata.
+  // Metadata (provider, command, exit code) goes into outputPayloadRef on the agentRun.
   let content = [
     `# ${roleArtifact[agentRun.agentRole]?.title ?? agentRun.agentRole}`,
     '',
-    `Provider: ${provider}`,
-    `Command: ${command}`,
-    `Exit code: ${result.exitCode ?? 'n/a'}`,
-    '',
-    result.output || '(no output)',
+    stepOk ? (cleanOutput || '(no output)') : `## 执行失败\n\nProvider: ${provider}, Exit code: ${result.exitCode ?? 'n/a'}\n\n${cleanOutput || '(no output)'}`,
   ].join('\n');
 
   if (agentRun.agentRole === 'coder') {
@@ -212,7 +229,7 @@ export async function executeCliAgentRun(agentRunId: string): Promise<void> {
 
   if (agentRun.agentRole === 'summarizer' && result.ok) {
     try {
-      const publish = await publishWorkspaceToGitHub(workspace, run, codeDir, result.output);
+      const publish = await publishWorkspaceToGitHub(workspace, run, codeDir, cleanOutput);
       content += [
         '',
         '## GitHub',
@@ -256,6 +273,14 @@ export async function executeCliAgentRun(agentRunId: string): Promise<void> {
     updatedAt: new Date(),
   }).where(eq(workflowSteps.id, step.id));
 
-  await publishEvent('step.status_changed', { stepId: step.id, status: stepOk ? 'completed' : 'failed', run_id: step.runId }, run.workspaceId);
-  if (stepOk) await scheduleNextStep(step.runId, step.position);
+  // SSE publish must not block workflow advancement — fire-and-forget.
+  publishEvent('step.status_changed', { stepId: step.id, status: stepOk ? 'completed' : 'failed', run_id: step.runId }, run.workspaceId).catch(() => {});
+
+  if (stepOk) {
+    await scheduleNextStep(step.runId, step.position);
+  } else {
+    // Mark run failed so it doesn't silently stay in 'running' state.
+    await db.update(workflowRuns).set({ status: 'failed', updatedAt: new Date() }).where(eq(workflowRuns.id, run.id));
+    publishEvent('run.status_changed', { run_id: run.id, status: 'failed' }, run.workspaceId).catch(() => {});
+  }
 }

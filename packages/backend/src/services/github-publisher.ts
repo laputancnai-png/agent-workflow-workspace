@@ -97,23 +97,25 @@ export async function publishWorkspaceToGitHub(
   if (!workspace.githubRepoUrl) {
     throw new Error('Workspace has no GitHub repository URL configured.');
   }
-  if (!runInfo.featureBranch) {
-    throw new Error('Workflow run has no feature branch.');
-  }
+  const featureBranch = runInfo.featureBranch
+    || await run('git', ['branch', '--show-current'], codeDir).catch(() => null)
+    || 'main';
 
   const repo = parseGitHubRepo(workspace.githubRepoUrl);
   const remoteUrl = await ensureGitHubRepo(repo, codeDir);
   await setOrigin(remoteUrl, codeDir);
 
   const baseBranch = workspace.defaultBranch || 'main';
-  await ensureLocalBranch(runInfo.featureBranch, codeDir);
-  await run('git', ['push', '-u', 'origin', baseBranch], codeDir);
-  await run('git', ['push', '-u', 'origin', runInfo.featureBranch], codeDir);
+  await ensureLocalBranch(featureBranch, codeDir);
+  // Push base branch; force-push if remote is ahead (e.g. implementation was on main, now reset locally).
+  await run('git', ['push', '-u', 'origin', baseBranch], codeDir)
+    .catch(() => run('git', ['push', '--force', '-u', 'origin', baseBranch], codeDir));
+  await run('git', ['push', '-u', 'origin', featureBranch], codeDir);
 
   try {
     const existing = await run(
       'gh',
-      ['pr', 'view', runInfo.featureBranch, '--repo', repo, '--json', 'url', '--jq', '.url'],
+      ['pr', 'view', featureBranch, '--repo', repo, '--json', 'url', '--jq', '.url'],
       codeDir,
     );
     if (existing) return { repo, remoteUrl, prUrl: existing };
@@ -131,7 +133,7 @@ export async function publishWorkspaceToGitHub(
       '--base',
       baseBranch,
       '--head',
-      runInfo.featureBranch,
+      featureBranch,
       '--title',
       prTitle(summary, workspace.name),
       '--body',

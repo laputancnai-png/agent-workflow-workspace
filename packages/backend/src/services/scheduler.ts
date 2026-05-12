@@ -1,44 +1,35 @@
 import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { agentRuns, runners } from '../db/schema/runners.js';
+import { agentRuns } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
-import { getRedis } from '../lib/redis.js';
 import { publishEvent } from '../lib/sse.js';
+import { executeCliAgentRun } from './cli-agent-executor.js';
 
 async function scheduleAgentStep(
   step: typeof workflowSteps.$inferSelect,
   run: typeof workflowRuns.$inferSelect,
 ): Promise<void> {
-  const runner = await db.query.runners.findFirst({
-    where: and(eq(runners.workspaceId, run.workspaceId), eq(runners.status, 'online')),
-  });
-
-  if (!runner) {
-    await db.update(workflowSteps)
-      .set({ status: 'pending', updatedAt: new Date() })
-      .where(eq(workflowSteps.id, step.id));
-    await publishEvent('step.status_changed', { stepId: step.id, status: 'pending', run_id: run.id, no_runner: true }, run.workspaceId);
-    return;
-  }
-
   const [agentRun] = await db
     .insert(agentRuns)
     .values({
       stepId: step.id,
-      runnerId: runner.id,
-      status: 'pending',
+      status: 'running',
       agentRole: step.agentRole!,
     })
     .returning();
-
-  await getRedis().lpush(`runner:queue:${runner.id}`, agentRun.id);
 
   await db.update(workflowSteps)
     .set({ status: 'running', updatedAt: new Date() })
     .where(eq(workflowSteps.id, step.id));
 
-  await publishEvent('step.status_changed', { stepId: step.id, status: 'running', run_id: run.id }, run.workspaceId);
+  publishEvent('step.status_changed', { stepId: step.id, status: 'running', run_id: run.id }, run.workspaceId).catch(() => {});
+
+  setImmediate(() => {
+    executeCliAgentRun(agentRun.id).catch(() => {
+      void failRun(run.id, run.workspaceId);
+    });
+  });
 }
 
 export async function scheduleNextStep(runId: string, completedStepPosition: number): Promise<void> {
@@ -63,7 +54,7 @@ export async function scheduleNextStep(runId: string, completedStepPosition: num
     await db.update(workflowSteps)
       .set({ status: 'running', updatedAt: new Date() })
       .where(eq(workflowSteps.id, nextStep.id));
-    await publishEvent('step.status_changed', { stepId: nextStep.id, status: 'running', run_id: runId }, run.workspaceId);
+    publishEvent('step.status_changed', { stepId: nextStep.id, status: 'running', run_id: runId }, run.workspaceId).catch(() => {});
   }
 }
 
@@ -78,8 +69,20 @@ export async function requeueStep(stepId: string): Promise<void> {
 }
 
 export async function failRun(runId: string, workspaceId: string): Promise<void> {
+  const runningSteps = await db
+    .select()
+    .from(workflowSteps)
+    .where(and(eq(workflowSteps.runId, runId), eq(workflowSteps.status, 'running')));
+
+  for (const step of runningSteps) {
+    await db.update(workflowSteps)
+      .set({ status: 'failed', updatedAt: new Date() })
+      .where(eq(workflowSteps.id, step.id));
+    publishEvent('step.status_changed', { stepId: step.id, status: 'failed', run_id: runId }, workspaceId).catch(() => {});
+  }
+
   await db.update(workflowRuns)
     .set({ status: 'failed', updatedAt: new Date() })
     .where(eq(workflowRuns.id, runId));
-  await publishEvent('step.status_changed', { run_id: runId, status: 'failed' }, workspaceId);
+  publishEvent('run.status_changed', { run_id: runId, status: 'failed' }, workspaceId).catch(() => {});
 }

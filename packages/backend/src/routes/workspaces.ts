@@ -6,6 +6,12 @@ import { db } from '../db/index.js';
 import { runners } from '../db/schema/runners.js';
 import { workspaceMembers, workspaces } from '../db/schema/workspaces.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
+import { ensureWorkspaceFolders, getWorkspaceGitInfo, listWorkspaceFiles, readWorkspaceFile, workspaceRoot } from '../services/workspace-files.js';
+
+type Workspace = typeof workspaces.$inferSelect;
+function serializeWorkspace(w: Workspace) {
+  return { ...w, storagePath: workspaceRoot(w) };
+}
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1).max(128),
@@ -22,6 +28,7 @@ const updateWorkspaceSchema = z.object({
   githubRepoUrl: z.string().url().nullable().optional(),
   defaultBranch: z.string().min(1).max(128).optional(),
   preferredProvider: z.string().min(1).max(32).optional(),
+  preferredModel: z.string().max(128).optional(),
 });
 
 export const workspaceRoutes: FastifyPluginAsync = async (app) => {
@@ -35,7 +42,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
       .where(eq(workspaceMembers.userId, userId));
 
-    return { data: rows.map((row) => row.workspace) };
+    return { data: rows.map((row) => serializeWorkspace(row.workspace)) };
   });
 
   app.post('/', async (request, reply) => {
@@ -52,8 +59,9 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       userId,
       role: 'owner',
     });
+    await ensureWorkspaceFolders(workspace);
 
-    return reply.code(201).send({ data: workspace });
+    return reply.code(201).send({ data: serializeWorkspace(workspace) });
   });
 
   app.get('/:id', async (request, reply) => {
@@ -71,7 +79,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       where: eq(workspaces.id, id),
     });
 
-    return { data: workspace };
+    return { data: workspace ? serializeWorkspace(workspace) : workspace };
   });
 
   app.patch('/:id', async (request, reply) => {
@@ -98,6 +106,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
         ...(parsed.data.githubRepoUrl !== undefined && { githubRepoUrl: parsed.data.githubRepoUrl }),
         ...(parsed.data.defaultBranch !== undefined && { defaultBranch: parsed.data.defaultBranch }),
         ...(parsed.data.preferredProvider !== undefined && { preferredProvider: parsed.data.preferredProvider }),
+        ...(parsed.data.preferredModel !== undefined && { preferredModel: parsed.data.preferredModel }),
       })
       .where(eq(workspaces.id, id))
       .returning();
@@ -106,7 +115,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'not_found' });
     }
 
-    return { data: updated };
+    return { data: serializeWorkspace(updated) };
   });
 
   app.delete('/:id', async (request, reply) => {
@@ -144,5 +153,77 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
 
     const rows = await db.select().from(runners).where(eq(runners.workspaceId, workspace.id));
     return { data: rows };
+  });
+
+  app.get('/:id/git', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    try {
+      const info = await getWorkspaceGitInfo(workspace);
+      return { data: info };
+    } catch {
+      return { data: null };
+    }
+  });
+
+  app.get('/:id/files', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+    const { area = 'code' } = request.query as { area?: string };
+
+    if (area !== 'code' && area !== 'docs') {
+      return reply.code(400).send({ error: 'invalid_area' });
+    }
+
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    const files = await listWorkspaceFiles(workspace, area);
+    return { data: files };
+  });
+
+  app.get('/:id/files/content', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+    const { area = 'code', path } = request.query as { area?: string; path?: string };
+
+    if (!path) return reply.code(400).send({ error: 'missing_path' });
+    if (area !== 'code' && area !== 'docs') return reply.code(400).send({ error: 'invalid_area' });
+
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    try {
+      const content = await readWorkspaceFile(workspace, area, path);
+      return { data: { path, content } };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'read_failed';
+      return reply.code(msg === 'invalid_path' ? 400 : 404).send({ error: msg });
+    }
   });
 };
