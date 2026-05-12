@@ -23,7 +23,7 @@ async function scheduleAgentStep(
     .set({ status: 'running', updatedAt: new Date() })
     .where(eq(workflowSteps.id, step.id));
 
-  await publishEvent('step.status_changed', { stepId: step.id, status: 'running', run_id: run.id }, run.workspaceId);
+  publishEvent('step.status_changed', { stepId: step.id, status: 'running', run_id: run.id }, run.workspaceId).catch(() => {});
 
   setImmediate(() => {
     executeCliAgentRun(agentRun.id).catch(() => {
@@ -54,7 +54,7 @@ export async function scheduleNextStep(runId: string, completedStepPosition: num
     await db.update(workflowSteps)
       .set({ status: 'running', updatedAt: new Date() })
       .where(eq(workflowSteps.id, nextStep.id));
-    await publishEvent('step.status_changed', { stepId: nextStep.id, status: 'running', run_id: runId }, run.workspaceId);
+    publishEvent('step.status_changed', { stepId: nextStep.id, status: 'running', run_id: runId }, run.workspaceId).catch(() => {});
   }
 }
 
@@ -78,11 +78,11 @@ export async function failRun(runId: string, workspaceId: string): Promise<void>
     await db.update(workflowSteps)
       .set({ status: 'failed', updatedAt: new Date() })
       .where(eq(workflowSteps.id, step.id));
-    await publishEvent('step.status_changed', { stepId: step.id, status: 'failed', run_id: runId }, workspaceId);
+    publishEvent('step.status_changed', { stepId: step.id, status: 'failed', run_id: runId }, workspaceId).catch(() => {});
   }
 
   await db.update(workflowRuns)
     .set({ status: 'failed', updatedAt: new Date() })
     .where(eq(workflowRuns.id, runId));
-  await publishEvent('run.status_changed', { run_id: runId, status: 'failed' }, workspaceId);
+  publishEvent('run.status_changed', { run_id: runId, status: 'failed' }, workspaceId).catch(() => {});
 }

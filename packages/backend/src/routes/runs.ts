@@ -25,6 +25,7 @@ function serializeStep(step: typeof workflowSteps.$inferSelect, artifactIds: str
     owner_type: step.ownerType,
     agent_role: step.agentRole ?? undefined,
     output_artifact_ids: artifactIds,
+    output_artifact_roles: step.outputArtifactRoles,
     updated_at: step.updatedAt.toISOString(),
   };
 }
