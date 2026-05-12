@@ -5,10 +5,12 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
 import { decisions } from '../db/schema/decisions.js';
+import { agentRuns } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
 import { publishEvent } from '../lib/sse.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
+import { requeueStep } from '../services/scheduler.js';
 
 const rerunSchema = z.object({
   reason: z.string().min(1),
@@ -93,10 +95,24 @@ export const stepRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'step_not_found' });
     }
 
+    if (!['running', 'failed', 'timed_out', 'cancelled', 'retrying'].includes(loaded.step.status)) {
+      return reply.code(409).send({ error: 'step_not_retryable', status: loaded.step.status });
+    }
+
+    await db
+      .update(agentRuns)
+      .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(agentRuns.stepId, stepId), eq(agentRuns.status, 'running')));
+
     await db
       .update(workflowSteps)
-      .set({ status: 'retrying', updatedAt: new Date() })
+      .set({ status: 'retrying', completedAt: null, updatedAt: new Date() })
       .where(eq(workflowSteps.id, stepId));
+
+    await db
+      .update(workflowRuns)
+      .set({ status: 'running', completedAt: null, updatedAt: new Date() })
+      .where(eq(workflowRuns.id, loaded.run.id));
 
     await db.insert(decisions).values({
       stepId,
@@ -107,6 +123,7 @@ export const stepRoutes: FastifyPluginAsync = async (app) => {
     });
 
     await publishEvent('step.status_changed', { stepId, status: 'retrying', run_id: loaded.run.id }, loaded.run.workspaceId);
+    await requeueStep(stepId);
 
     return { data: { step_id: stepId, step_status: 'retrying' } };
   });

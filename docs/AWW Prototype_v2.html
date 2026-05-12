@@ -162,7 +162,7 @@ const FLOW_META=[
 
 /* ─── DIFF DATA ───────────────────────────────────────────────────── */
 const DIFF_FILES=[
-  {name:'src/cart/CartService.ts',adds:68,dels:4,lines:[
+  {name:'src/example/Service.ts',adds:68,dels:4,lines:[
     {t:'ctx',n:44,c:'  private storage: Storage;'},
     {t:'ctx',n:45,c:'  constructor(private api: ApiClient) {'},
     {t:'ctx',n:46,c:'    this.storage = window.localStorage;'},
@@ -293,6 +293,100 @@ function StepRow({step,active}){
     </div>
   );
 }
+function StepCard({step,active,onClick}){
+  const t=useT();const clickable=step.status!=='pending'||active;
+  return(
+    <div style={{display:'flex',alignItems:'stretch',gap:0}}>
+      <div style={{width:3,borderRadius:99,flexShrink:0,marginRight:9,background:step.status==='pending'?'rgba(0,0,0,0.06)':step.owner==='human'?t.p:t.ag,transition:'background 0.2s'}}/>
+      <button onClick={clickable?onClick:undefined} disabled={!clickable} style={{
+        flex:1,padding:'10px 12px',borderRadius:11,marginBottom:6,textAlign:'left',
+        background:active?t.gl:'rgba(255,255,255,0.25)',
+        border:`1.5px solid ${active?(step.owner==='human'?t.pb:t.ag+'55'):'rgba(255,255,255,0.7)'}`,
+        backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',boxShadow:active?t.gls:'none',
+        cursor:clickable?'pointer':'not-allowed',opacity:clickable?1:0.62,fontFamily:'DM Sans,sans-serif',
+      }}>
+        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:2}}>
+          <Dot status={step.status}/>
+          <span style={{fontSize:12.5,fontWeight:600,color:step.status==='pending'?t.txs:t.tx}}>{step.name}</span>
+          <OwnerTag owner={step.owner} role={step.agentRole}/>
+          {step.status==='completed'&&<Badge color="green">✓</Badge>}
+          {step.status==='running'&&<Badge color="teal">运行中</Badge>}
+          {step.status==='human_owned'&&<Badge color="amber">人工接管</Badge>}
+        </div>
+        <div style={{fontSize:11,color:t.txs,paddingLeft:16,lineHeight:1.45}}>{step.desc}</div>
+      </button>
+    </div>
+  );
+}
+function FileTree({nodes=[],selectedPath='',onSelect=()=>{}}){
+  const t=useT();
+  const rootDirs=nodes.filter(n=>n.type==='directory').map(n=>n.path);
+  const selectedDirs=selectedPath.split('/').slice(0,-1).reduce((acc,_,i,arr)=>[...acc,arr.slice(0,i+1).join('/')],[]);
+  const[open,setOpen]=useState(()=>new Set([...rootDirs,...selectedDirs]));
+  useEffect(()=>{
+    setOpen(prev=>new Set([...prev,...rootDirs,...selectedDirs]));
+  },[nodes,selectedPath]);
+  if(!nodes.length){
+    return <Glass style={{padding:18,color:t.txm,fontSize:13}}>目录为空。</Glass>;
+  }
+  const toggle=(path)=>setOpen(prev=>{const next=new Set(prev);next.has(path)?next.delete(path):next.add(path);return next;});
+  const render=(items,depth=0)=>items.map(n=>{
+    const isDir=n.type==='directory';
+    const isOpen=open.has(n.path);
+    const active=selectedPath===n.path;
+    const childCount=n.children?.length||0;
+    return(
+      <div key={n.path}>
+        <button onClick={()=>isDir?toggle(n.path):onSelect(n.path)} title={n.path} style={{
+          width:'100%',height:26,display:'flex',alignItems:'center',gap:5,padding:'0 7px',paddingLeft:6+depth*14,
+          borderRadius:6,fontFamily:'JetBrains Mono,monospace',fontSize:11.5,color:t.txm,border:'none',
+          background:active?t.pl:'transparent',cursor:'pointer',textAlign:'left',overflow:'hidden',
+        }}>
+          <span style={{width:13,flexShrink:0,color:isDir?t.txs:'transparent',fontSize:10,transform:isDir&&isOpen?'rotate(90deg)':'none',transition:'transform 0.12s ease'}}>▶</span>
+          <span style={{width:15,flexShrink:0,color:isDir?t.p:t.txs,fontSize:13}}>{isDir?(isOpen?'📂':'📁'):'📄'}</span>
+          <span style={{minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isDir?t.tx:active?t.p:t.txm,fontWeight:isDir?700:active?700:500}}>{n.name}</span>
+          {isDir&&childCount>0&&<span style={{marginLeft:'auto',fontSize:9.5,color:t.txs,flexShrink:0}}>{childCount}</span>}
+        </button>
+        {isDir&&isOpen&&childCount>0?render(n.children,depth+1):null}
+      </div>
+    );
+  });
+  return <div style={{padding:'6px 0',userSelect:'none'}}>{render(nodes)}</div>;
+}
+function RealFlowNav({steps=[],active,onSelect}){
+  const t=useT();
+  const labels=['空状态','创建向导','PRD确认','生成计划','审批计划','任务拆解','代码实现','运行测试','代码审查','最终审查','PR完成'];
+  const realByNode={3:2,4:3,5:3,6:4,7:5,8:6,9:7,10:8,11:9};
+  const completed=new Set(steps.filter(s=>s.status==='completed').map(s=>s.position));
+  const activePos=active?.position;
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:0,padding:'9px 16px',background:t.sb,backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',borderBottom:`1px solid ${t.glb}`,overflowX:'auto',flexShrink:0}}>
+      <span style={{fontSize:10.5,fontWeight:700,color:t.txs,letterSpacing:0.5,marginRight:10,flexShrink:0}}>FLOW</span>
+      {labels.map((label,i)=>{
+        const node=i+1;
+        const realPos=realByNode[node];
+        const step=steps.find(s=>s.position===realPos);
+        const done=node<=2||completed.has(realPos)||completed.has(realPos-1)&&node===5;
+        const activeNode=realPos?step?.id===active?.id||realPos===activePos&&node!==5:false;
+        const human=[3,5,10].includes(node);
+        const accent=human?t.p:t.ag;
+        return(
+          <React.Fragment key={node}>
+            {i>0&&<div style={{width:12,height:1.5,background:done?t.ok:activeNode?accent:'rgba(0,0,0,0.09)',flexShrink:0}}/>}
+            <button onClick={()=>step&&onSelect(step.id)} disabled={!step&&node>2} title={label} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,padding:'3px 7px',borderRadius:7,border:'none',cursor:step||node<=2?'pointer':'not-allowed',background:activeNode?(human?t.pl:t.agl):'transparent',outline:activeNode?`2px solid ${accent}`:'none',outlineOffset:1,opacity:step||node<=2?1:0.55,flexShrink:0}}>
+              <div style={{width:20,height:20,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:done?t.ok:activeNode?accent:'rgba(0,0,0,0.08)',fontSize:9.5,fontWeight:700,color:done||activeNode?'white':t.txs}}>{done?'✓':node}</div>
+              <span style={{fontSize:9.5,fontWeight:activeNode?700:400,color:activeNode?accent:t.txs,whiteSpace:'nowrap'}}>{label}</span>
+            </button>
+          </React.Fragment>
+        );
+      })}
+      <div style={{marginLeft:'auto',display:'flex',gap:7,paddingLeft:12,flexShrink:0,alignItems:'center'}}>
+        <span style={{fontSize:10,color:t.p,fontWeight:600,background:t.pl,border:`1px solid ${t.pb}`,borderRadius:4,padding:'2px 6px'}}>👤 人工</span>
+        <span style={{fontSize:10,color:t.ag,fontWeight:600,background:t.agl,border:`1px solid ${t.ag}40`,borderRadius:4,padding:'2px 6px'}}>🤖 Agent</span>
+      </div>
+    </div>
+  );
+}
 
 /* ─── PANEL WRAPPER (handles fullscreen) ─────────────────────────── */
 function PanelWrapper({children,title,badge,onClose,fullscreen,setFullscreen,mobileBtn,onMobile}){
@@ -396,7 +490,7 @@ function PanelPRDConfirm({onAdvance,full,setFull,onMobile}){
       <div style={{flex:1,overflow:'auto',padding:'14px 18px'}}>
         <div style={{fontSize:11,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:8}}>PRD 预览</div>
         <div style={{padding:'12px 14px',borderRadius:10,background:'rgba(255,255,255,0.55)',border:'1px solid rgba(0,0,0,0.07)',fontSize:12,color:t.tx,lineHeight:1.75,fontFamily:'JetBrains Mono,monospace'}}>
-          {'# 购物车持久化\n\n## 目标\n用户刷新页面后购物车内容应保留。\n\n## 验收标准\n- 刷新后购物车完整\n- 同步失败显示错误提示\n- 离线状态本地存储兜底\n\n## 影响模块\nsrc/cart/, src/api/cart.ts'}
+          {'# 示例 PRD\n\n## 目标\n从真实导入的产品需求生成执行计划。\n\n## 验收标准\n- 需求已确认\n- 影响范围清晰\n- 风险和测试策略明确\n\n## 影响模块\n由真实 PRD 决定'}
         </div>
       </div>
       <div style={{padding:'14px 18px',borderTop:`1px solid rgba(0,0,0,0.07)`}}>
@@ -413,7 +507,7 @@ function PanelPRDConfirm({onAdvance,full,setFull,onMobile}){
 function PanelAgentRunning({role,nextStep,full,setFull}){
   const t=useT();
   const logsMap={
-    planner:['Loading PRD artifact…','Scanning repo: 48 files','Calling claude-sonnet-4-6…','Drafting implementation approach…'],
+    planner:['Loading PRD artifact…','Scanning repository…','Calling selected agent…','Drafting implementation approach…'],
     tasker:['Reading PLAN artifact…','Identifying file boundaries…','Creating 4 scoped tasks…'],
     test:['npm run test -- --coverage','npm run typecheck','npm run lint','Collecting results…'],
     review:['Diffing feature branch vs main…','Analyzing 312 changed lines','Cross-referencing with PRD…'],
@@ -434,7 +528,7 @@ function PanelAgentRunning({role,nextStep,full,setFull}){
 
 function PanelPlanApproval({onAdvance,onRequest,onTakeOver,full,setFull,onMobile}){
   const t=useT();const[tab,st]=useState('content');
-  const PLAN=`## 实现方案\n\n### 技术路径\n1. CartService 增加本地 + 服务端双写\n2. 新增 POST /api/cart/sync\n3. localStorage 离线回退\n\n### 影响文件\n- src/cart/CartService.ts\n- src/api/cart.ts\n- src/hooks/useCart.ts\n- src/pages/CheckoutPage.tsx\n\n### 风险\n并发同步冲突（低，单用户场景）\n\n### 测试策略\n单测 CartService + E2E checkout 主流程`;
+  const PLAN=`## 实现方案\n\n真实计划内容会从后端 Artifact 读取。`;
   return(
     <PanelWrapper title="生成工程计划" badge={<><OwnerTag owner="agent" role="planner"/><Badge color="amber">⚡ 待审批</Badge></>} fullscreen={full} setFullscreen={setFull} mobileBtn onMobile={onMobile}>
       <div style={{display:'flex',gap:0,padding:'0 18px',borderBottom:`1.5px solid rgba(0,0,0,0.07)`,background:'rgba(255,255,255,0.25)',flexShrink:0}}>
@@ -446,7 +540,7 @@ function PanelPlanApproval({onAdvance,onRequest,onTakeOver,full,setFull,onMobile
         {tab==='content'&&<div className="anim-fade" style={{fontFamily:'JetBrains Mono,monospace',fontSize:11.5,color:t.tx,lineHeight:1.75,whiteSpace:'pre-wrap'}}>{PLAN}</div>}
         {tab==='artifacts'&&(
           <div className="anim-fade" style={{display:'flex',flexDirection:'column',gap:8}}>
-            {[{role:'PLAN',title:'工程实现计划 v1',size:'2.1 KB',time:'刚刚'},{role:'PRD',title:'购物车持久化需求文档',size:'4.8 KB',time:'9 分钟前'}].map((a,i)=>(
+            {[{role:'PLAN',title:'工程实现计划 v1',size:'—',time:'刚刚'},{role:'PRD',title:'导入的 PRD',size:'—',time:'—'}].map((a,i)=>(
               <div key={i} style={{padding:'11px 13px',borderRadius:10,background:'rgba(255,255,255,0.6)',border:'1px solid rgba(0,0,0,0.07)'}}>
                 <Badge color={a.role==='PLAN'?'amber':'gray'}>{a.role}</Badge>
                 <div style={{fontSize:13,fontWeight:600,color:t.tx,marginTop:5}}>{a.title}</div>
@@ -492,7 +586,7 @@ function PanelCoding({full,setFull}){
       {tab==='diff'&&<DiffViewer/>}
       {tab==='files'&&(
         <div style={{flex:1,overflow:'auto',padding:'14px 18px'}} className="anim-fade">
-          <AgentBanner role="coder" logs={['git checkout aww/shopflow-web/a1b2c3','Reading task scope…','Implementing CartService.persist()…','Writing unit tests…']}/>
+          <AgentBanner role="coder" logs={['git checkout <feature-branch>','Reading task scope…','Implementing assigned changes…','Writing tests…']}/>
           {DIFF_FILES.map((f,i)=>(
             <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,background:'rgba(255,255,255,0.5)',border:'1px solid rgba(0,0,0,0.07)',marginBottom:5,fontFamily:'JetBrains Mono,monospace',fontSize:11.5,color:t.txm}}>
               <span style={{color:'oklch(68% 0.12 55)',fontWeight:700,flexShrink:0}}>M</span>
@@ -505,7 +599,7 @@ function PanelCoding({full,setFull}){
       )}
       {tab==='logs'&&(
         <div style={{flex:1,overflow:'auto',padding:'14px 18px'}} className="anim-fade">
-          <AgentBanner role="coder" logs={['git checkout aww/shopflow-web/a1b2c3','Implementing CartService.persist()…','Writing cart.test.ts…','Committing changes…']}/>
+          <AgentBanner role="coder" logs={['git checkout <feature-branch>','Implementing assigned changes…','Writing tests…','Committing changes…']}/>
         </div>
       )}
       <div style={{padding:'12px 18px',borderTop:`1px solid rgba(0,0,0,0.07)`,display:'flex',gap:7}}>
@@ -531,8 +625,8 @@ function PanelTest({full,setFull}){
           ))}
         </div>
         <div style={{padding:'10px 12px',borderRadius:9,background:'oklch(16% 0.01 220)',fontFamily:'JetBrains Mono,monospace',fontSize:10.5,lineHeight:1.9,color:'oklch(72% 0.04 195)'}}>
-          <span style={{color:t.ok}}>✓</span> CartService.persist()<br/>
-          <span style={{color:t.ok}}>✓</span> CartService.syncToServer()<br/>
+          <span style={{color:t.ok}}>✓</span> Unit tests<br/>
+          <span style={{color:t.ok}}>✓</span> Integration checks<br/>
           <span style={{color:t.ok}}>✓</span> useCart — offline fallback<br/>
           <span style={{color:'oklch(60% 0.05 55)'}}>○</span> CheckoutPage E2E (skipped)<br/>
           <span style={{color:t.ok}}>PASS</span> typecheck · <span style={{color:t.ok}}>PASS</span> lint
@@ -546,7 +640,7 @@ function PanelReview({onAdvance,onRequest,onTakeOver,full,setFull,onMobile}){
   const t=useT();
   const FINDS=[
     {sev:'High',file:'src/api/cart.ts:47',text:'缺少身份验证中间件'},
-    {sev:'Medium',file:'src/cart/CartService.ts:112',text:'localStorage 写入前缺少序列化校验'},
+    {sev:'Medium',file:'src/example/Service.ts:112',text:'示例审查发现'},
     {sev:'Medium',file:'src/hooks/useCart.ts:23',text:'useEffect 依赖数组缺少 cartId'},
     {sev:'Low',file:'src/pages/CheckoutPage.tsx:89',text:'同步失败缺少错误提示'},
   ];
@@ -598,10 +692,10 @@ function PanelDone({full,setFull}){
         <div style={{padding:'16px',borderRadius:12,background:t.okl,border:`1.5px solid ${t.ok}45`,marginBottom:14,textAlign:'center'}}>
           <div style={{fontSize:26,marginBottom:4}}>🎉</div>
           <div style={{fontSize:14,fontWeight:700,color:t.ok}}>Pull Request #247 已创建</div>
-          <div style={{fontSize:12,color:t.txm,marginTop:2}}>aww/shopflow-web/a1b2c3 → main</div>
+          <div style={{fontSize:12,color:t.txm,marginTop:2}}>{'<feature-branch>'} → main</div>
         </div>
         <div style={{padding:'12px 14px',borderRadius:10,background:'rgba(255,255,255,0.6)',border:'1px solid rgba(0,0,0,0.07)',fontSize:12.5,color:t.tx,lineHeight:1.7,marginBottom:14}}>
-          <strong>变更：</strong>购物车持久化，支持 localStorage + 服务端双写。<br/><br/>
+          <strong>变更：</strong>真实 PR 摘要会从后端 Artifact 读取。<br/><br/>
           <strong>测试：</strong>42 个全部通过，覆盖率 84%。<br/><br/>
           <strong>风险：</strong>Auth 问题已在实现中修复。
         </div>
@@ -725,7 +819,7 @@ function MobileApprovalView({flowState,onClose,onAdvance,onRequest}){
 /* ─── OVERLAYS ───────────────────────────────────────────────────── */
 function FindingSel({onClose}){
   const t=useT();const[sel,ss]=useState([]);
-  const F=[{id:1,sev:'High',file:'src/api/cart.ts:47',text:'缺少身份验证中间件'},{id:2,sev:'Medium',file:'src/cart/CartService.ts:112',text:'localStorage 缺序列化校验'},{id:3,sev:'Medium',file:'src/hooks/useCart.ts:23',text:'useEffect 依赖缺 cartId'},{id:4,sev:'Low',file:'src/pages/CheckoutPage.tsx:89',text:'同步失败缺错误提示'}];
+  const F=[{id:1,sev:'High',file:'src/example/api.ts:47',text:'示例高风险发现'},{id:2,sev:'Medium',file:'src/example/Service.ts:112',text:'示例中风险发现'},{id:3,sev:'Medium',file:'src/example/hook.ts:23',text:'示例依赖问题'},{id:4,sev:'Low',file:'src/example/page.tsx:89',text:'示例低风险发现'}];
   const toggle=id=>ss(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const sc={High:'red',Medium:'amber',Low:'gray'};
   return(
@@ -763,7 +857,7 @@ function FindingSel({onClose}){
 
 function TakeOverModal({onClose}){
   const t=useT();const[cp,sc]=useState(false);
-  const cmd='git checkout aww/shopflow-web/a1b2c3 && git pull';
+  const cmd='git checkout <feature-branch> && git pull';
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',backdropFilter:'blur(4px)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <Glass style={{width:460,padding:24,animation:'slideUp 0.3s ease both'}}>
@@ -773,7 +867,7 @@ function TakeOverModal({onClose}){
         </div>
         <div style={{padding:'9px 12px',borderRadius:9,background:t.pl,border:`1.5px solid ${t.pb}`,marginBottom:10}}>
           <div style={{fontSize:9.5,fontWeight:700,color:t.p,marginBottom:1}}>BRANCH</div>
-          <div style={{fontSize:12.5,fontFamily:'JetBrains Mono,monospace',color:t.tx}}>aww/shopflow-web/a1b2c3</div>
+          <div style={{fontSize:12.5,fontFamily:'JetBrains Mono,monospace',color:t.tx}}>{'<feature-branch>'}</div>
         </div>
         <div style={{marginBottom:14}}>
           <div style={{fontSize:10.5,fontWeight:700,color:t.txs,marginBottom:5}}>在本地执行</div>
@@ -783,7 +877,7 @@ function TakeOverModal({onClose}){
           </div>
         </div>
         <div style={{padding:'9px 11px',borderRadius:8,background:t.agl,border:`1px solid ${t.ag}28`,fontSize:11.5,color:t.ag,marginBottom:16}}>
-          AWW 检测到新提交后自动继续工作流
+          AWW Backend 检测到新提交后自动继续工作流
         </div>
         <div style={{display:'flex',gap:7}}>
           <Btn variant="outline" style={{flex:1,justifyContent:'center'}} onClick={onClose}>取消</Btn>
@@ -814,9 +908,24 @@ function EmptyState({onStart}){
 
 /* ─── WIZARD ─────────────────────────────────────────────────────── */
 function Wizard({onClose,onComplete}){
-  const t=useT();const[step,ss]=useState(1);const[name,sn]=useState('');const[prd,sp]=useState('');
+  const t=useT();const[step,ss]=useState(1);const[name,sn]=useState('');const[prd,sp]=useState('');const[repo,sr]=useState('');const[busy,sb]=useState(false);const[err,se]=useState('');const[repoMsg,srm]=useState('');
+  const user=authUser();
+  const githubLogin=user?.login||user?.name||user?.email?.split('@')?.[0]||'owner';
+  const generatedRepo=name.trim()?`https://github.com/${githubLogin}/${githubRepoNameFromWorkspace(name)}`:'';
   const inp={width:'100%',padding:'9px 13px',borderRadius:9,border:'1.5px solid rgba(0,0,0,0.11)',fontSize:13.5,fontFamily:'DM Sans,sans-serif',color:t.tx,background:'rgba(255,255,255,0.8)',outline:'none'};
-  const canNext=(step===1&&name.trim())||(step===2)||(step===3&&prd.trim());
+  const repoOk=!repo.trim()||/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/?$/.test(repo.trim())||/^git@github\.com:[^/\s]+\/[^/\s]+\.git$/.test(repo.trim());
+  const canNext=(step===1&&name.trim())||(step===2&&repoOk)||step===3;
+  const submit=async()=>{
+    if(!canNext||busy)return;
+    sb(true);se('');
+    try{
+      await onComplete({name:name.trim(),repoUrl:(repo.trim()||generatedRepo)||undefined,prd:prd.trim()});
+      onClose();
+    }catch(e){
+      se(e.message||'创建失败');
+    }
+    sb(false);
+  };
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.22)',backdropFilter:'blur(6px)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <Glass style={{width:500,padding:28,animation:'slideUp 0.3s ease both'}}>
@@ -824,42 +933,121 @@ function Wizard({onClose,onComplete}){
         <div style={{display:'flex',gap:6,marginBottom:24}}>
           {['项目','仓库','PRD'].map((s,i)=><div key={i} style={{flex:1}}><div style={{height:3,borderRadius:99,background:i+1<=step?t.p:'rgba(0,0,0,0.08)',transition:'background 0.25s',marginBottom:3}}/><span style={{fontSize:11,fontWeight:600,color:i+1===step?t.p:t.txs}}>{s}</span></div>)}
         </div>
-        {step===1&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>项目名称</h2><input style={{...inp,border:`1.5px solid ${name.trim()?t.pb:'rgba(0,0,0,0.11)'}`}} placeholder="如：ShopFlow Web" value={name} onChange={e=>sn(e.target.value)}/>{!name.trim()&&<div style={{fontSize:11,color:t.er,marginTop:5}}>请输入项目名称</div>}<div style={{marginTop:10,padding:'10px 12px',borderRadius:9,background:t.pl,border:`1px solid ${t.pb}`}}><div style={{fontSize:11,color:t.txs}}>模板</div><div style={{fontSize:12.5,fontWeight:600,color:t.p}}>PRD → PR 交付流程 · 9步</div></div></div>}
-        {step===2&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>连接仓库</h2><Btn variant="outline" style={{width:'100%',justifyContent:'center',marginBottom:8}}>🔗 Connect GitHub</Btn><div style={{textAlign:'center',fontSize:11,color:t.txs,margin:'8px 0'}}>或</div><input style={inp} placeholder="粘贴 GitHub 仓库 URL…"/></div>}
-        {step===3&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>添加 PRD</h2><textarea style={{...inp,height:130,resize:'none',border:`1.5px solid ${prd.trim()?t.pb:'rgba(0,0,0,0.11)'}`}} placeholder="粘贴产品需求文档…" value={prd} onChange={e=>sp(e.target.value)}/>{!prd.trim()&&<div style={{fontSize:11,color:t.er,marginTop:5}}>请粘贴 PRD 内容</div>}</div>}
+        {step===1&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>项目名称</h2><input style={{...inp,border:`1.5px solid ${name.trim()?t.pb:'rgba(0,0,0,0.11)'}`}} placeholder="如：我的项目" value={name} onChange={e=>sn(e.target.value)}/>{!name.trim()&&<div style={{fontSize:11,color:t.er,marginTop:5}}>请输入项目名称</div>}<div style={{marginTop:10,padding:'10px 12px',borderRadius:9,background:t.pl,border:`1px solid ${t.pb}`}}><div style={{fontSize:11,color:t.txs}}>模板</div><div style={{fontSize:12.5,fontWeight:600,color:t.p}}>PRD → PR 交付流程 · 9步</div></div></div>}
+        {step===2&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>连接仓库</h2><div style={{padding:'10px 12px',borderRadius:9,background:t.pl,border:`1px solid ${t.pb}`,marginBottom:10}}><div style={{fontSize:10.5,fontWeight:700,color:t.p,marginBottom:4}}>根据 GitHub 登录生成</div><div style={{fontSize:12.5,color:t.tx,fontFamily:'JetBrains Mono,monospace',wordBreak:'break-all'}}>{generatedRepo||'输入项目名称后自动生成'}</div></div><Btn variant="outline" onClick={()=>{sr(generatedRepo);srm('已使用 GitHub 用户名和 workspace 名称生成仓库 URL。');}} disabled={!generatedRepo} style={{width:'100%',justifyContent:'center',marginBottom:8}}>使用生成的仓库 URL</Btn>{repoMsg&&<div style={{fontSize:11,color:t.ag,background:t.agl,border:`1px solid ${t.ag}30`,borderRadius:8,padding:'7px 9px',marginBottom:8}}>{repoMsg}</div>}<div style={{textAlign:'center',fontSize:11,color:t.txs,margin:'8px 0'}}>或手动覆盖</div><input id="repo-url-input" style={{...inp,border:`1.5px solid ${repoOk?'rgba(0,0,0,0.11)':t.er}`}} placeholder={generatedRepo||'https://github.com/org/repo'} value={repo||generatedRepo} onChange={e=>sr(e.target.value)}/>{!repoOk&&<div style={{fontSize:11,color:t.er,marginTop:5}}>请输入有效的 GitHub 仓库 URL，或留空稍后配置。</div>}</div>}
+        {step===3&&<div className="anim-fade"><h2 style={{fontSize:18,fontWeight:700,color:t.tx,marginBottom:16}}>添加 PRD</h2><input type="file" accept=".md,text/markdown" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;if(!f.name.toLowerCase().endsWith('.md')){se('当前只支持上传 .md 文件');return;}sp(await f.text());se('');}} style={{...inp,marginBottom:8}}/><textarea style={{...inp,height:130,resize:'none',border:`1.5px solid ${prd.trim()?t.pb:'rgba(0,0,0,0.11)'}`}} placeholder="粘贴产品需求文档，或上传 .md 文件…" value={prd} onChange={e=>sp(e.target.value)}/><div style={{fontSize:11,color:t.txs,marginTop:5}}>可以先不添加 PRD，之后在 Import PRD 步骤上传 .md。</div></div>}
+        {err&&<div style={{fontSize:11.5,color:t.er,marginTop:10,padding:'8px 10px',borderRadius:8,background:t.erl,border:`1px solid ${t.er}35`}}>{err}</div>}
         <div style={{display:'flex',justifyContent:'space-between',marginTop:20}}>
-          <Btn variant="outline" onClick={step===1?onClose:()=>ss(s=>s-1)}>{step===1?'取消':'← 上一步'}</Btn>
-          <Btn disabled={!canNext} onClick={step===3?()=>{if(canNext){onComplete();onClose();}}:()=>canNext&&ss(s=>s+1)}>{step===3?'创建工作区':'下一步 →'}</Btn>
+          <Btn variant="outline" disabled={busy} onClick={step===1?onClose:()=>ss(s=>s-1)}>{step===1?'取消':'← 上一步'}</Btn>
+          <Btn disabled={!canNext||busy} onClick={step===3?submit:()=>canNext&&ss(s=>s+1)}>{step===3?(busy?'创建中…':'创建工作区'):'下一步 →'}</Btn>
         </div>
       </Glass>
     </div>
   );
 }
 
+function parentPath(){
+  try{return window.parent.location.pathname;}catch{return window.location.pathname;}
+}
+function workspaceSlugFromPath(){
+  const match=parentPath().match(/^\/w\/([^/]+)/);
+  return match?decodeURIComponent(match[1]):'';
+}
+function pushParentPath(path){
+  try{
+    window.parent.history.pushState(null,'',path);
+  }catch{}
+}
+function logoutParent(){
+  try{
+    window.parent.localStorage.removeItem('aww-auth');
+    window.parent.location.href='/login';
+  }catch{
+    localStorage.removeItem('aww-auth');
+    window.location.href='/login';
+  }
+}
+function authToken(){
+  try{
+    const raw=window.parent.localStorage.getItem('aww-auth')||localStorage.getItem('aww-auth');
+    return raw?JSON.parse(raw)?.state?.token:null;
+  }catch{return null;}
+}
+function setAuthToken(token){
+  try{
+    const storage=window.parent.localStorage||localStorage;
+    const raw=storage.getItem('aww-auth');
+    if(!raw)return;
+    const parsed=JSON.parse(raw);
+    parsed.state={...(parsed.state||{}),token};
+    storage.setItem('aww-auth',JSON.stringify(parsed));
+  }catch{}
+}
+function authUser(){
+  try{
+    const raw=window.parent.localStorage.getItem('aww-auth')||localStorage.getItem('aww-auth');
+    return raw?JSON.parse(raw)?.state?.user:null;
+  }catch{return null;}
+}
+async function apiJson(path,opts={}){
+  const tk=authToken();
+  const res=await fetch(path,{...opts,credentials:'include',headers:{Accept:'application/json',...(opts.body?{'Content-Type':'application/json'}:{}),...(tk?{Authorization:`Bearer ${tk}`}:{})}});
+  if(res.status===401&&path!=='/api/v1/auth/refresh'){
+    const refresh=await fetch('/api/v1/auth/refresh',{method:'POST',credentials:'include',headers:{Accept:'application/json'}});
+    if(refresh.ok){
+      const refreshed=await refresh.json();
+      if(refreshed.accessToken){
+        setAuthToken(refreshed.accessToken);
+        return apiJson(path,opts);
+      }
+    }
+  }
+  if(!res.ok)throw new Error(`${res.status} ${path}`);
+  return res.status===204?{}:res.json();
+}
+function fmtDate(v){
+  if(!v)return '—';
+  const d=new Date(v);
+  if(Number.isNaN(d.getTime()))return '—';
+  return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function stepOwner(step){return step.owner_type==='human'||step.owner_type==='approval_gate'?'human':'agent';}
+function slugifyName(name){
+  const slug=name.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,48);
+  return slug||`workspace-${Date.now().toString(36)}`;
+}
+function githubRepoNameFromWorkspace(name){
+  const repo=name.trim().replace(/[^A-Za-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,96);
+  return repo||slugifyName(name);
+}
+
 /* ─── SIDEBAR ────────────────────────────────────────────────────── */
-function Sidebar({screen,setScreen}){
+function Sidebar({screen,setScreen,onLogo,onProject,onLogout,workspace,run}){
   const t=useT();
-  const navs=[{id:'workspace',icon:'⬡',label:'工作区'},{id:'artifacts',icon:'◈',label:'产物'},{id:'audit',icon:'◎',label:'审计'},{id:'settings',icon:'⊙',label:'设置'}];
+  const navs=[{id:'workspaces',icon:'▦',label:'全部工作区'},{id:'workspace',icon:'⬡',label:'当前项目'},{id:'artifacts',icon:'◈',label:'产物'},{id:'audit',icon:'◎',label:'审计'},{id:'settings',icon:'⊙',label:'设置'}];
   return(
     <div style={{width:200,flexShrink:0,background:t.sb,backdropFilter:'blur(22px)',WebkitBackdropFilter:'blur(22px)',borderRight:`1px solid ${t.glb}`,display:'flex',flexDirection:'column',padding:'16px 10px',gap:2,zIndex:10}}>
-      <div style={{padding:'2px 8px 16px'}}><Logo size={24}/></div>
-      <div style={{padding:'6px 8px',borderRadius:8,background:t.pl,border:`1px solid ${t.pb}`,marginBottom:6}}>
+      <button onClick={onLogo} style={{padding:'2px 8px 16px',background:'none',border:'none',cursor:'pointer',textAlign:'left'}}><Logo size={24}/></button>
+      <button onClick={onProject} style={{padding:'6px 8px',borderRadius:8,background:t.pl,border:`1px solid ${t.pb}`,marginBottom:6,cursor:'pointer',textAlign:'left'}}>
         <div style={{fontSize:9.5,fontWeight:700,color:t.p,letterSpacing:0.5,marginBottom:1}}>当前项目</div>
-        <div style={{fontSize:12.5,fontWeight:600,color:t.tx}}>ShopFlow Web</div>
-        <div style={{fontSize:10.5,color:t.txs}}>checkout-cart-persist</div>
-      </div>
+        <div style={{fontSize:12.5,fontWeight:600,color:t.tx}}>{workspace?.name||'未选择工作区'}</div>
+        <div style={{fontSize:10.5,color:t.txs}}>{run?.feature_branch||workspace?.slug||'暂无运行'}</div>
+      </button>
       {navs.map(n=>(
-        <button key={n.id} onClick={()=>setScreen(n.id)} style={{display:'flex',alignItems:'center',gap:7,padding:'7px 8px',borderRadius:7,background:screen===n.id?t.pl:'transparent',color:screen===n.id?t.p:t.txm,fontWeight:screen===n.id?600:400,fontSize:13,border:screen===n.id?`1px solid ${t.pb}`:'1px solid transparent',cursor:'pointer',transition:'all 0.13s',width:'100%',textAlign:'left'}}>
+        <button key={n.id} onClick={()=>{setScreen(n.id);pushParentPath(n.id==='workspaces'?'/workspaces':parentPath().startsWith('/w/')?parentPath():'/w/workspace');}} style={{display:'flex',alignItems:'center',gap:7,padding:'7px 8px',borderRadius:7,background:screen===n.id?t.pl:'transparent',color:screen===n.id?t.p:t.txm,fontWeight:screen===n.id?600:400,fontSize:13,border:screen===n.id?`1px solid ${t.pb}`:'1px solid transparent',cursor:'pointer',transition:'all 0.13s',width:'100%',textAlign:'left'}}>
           <span style={{fontSize:13,opacity:0.75}}>{n.icon}</span>{n.label}
         </button>
       ))}
       <div style={{marginTop:'auto',padding:'8px',borderRadius:8,background:'rgba(0,0,0,0.04)',border:'1px solid rgba(0,0,0,0.07)'}}>
         <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2}}>
           <span style={{width:6,height:6,borderRadius:'50%',background:t.ok}}/>
-          <span style={{fontSize:10,fontWeight:600,color:t.ok}}>Runner 在线</span>
+          <span style={{fontSize:10,fontWeight:600,color:t.ok}}>Backend 执行中</span>
         </div>
-        <div style={{fontSize:9.5,color:t.txs,fontFamily:'JetBrains Mono,monospace'}}>localhost:7432</div>
+        <div style={{fontSize:9.5,color:t.txs,fontFamily:'JetBrains Mono,monospace'}}>localhost:3000</div>
       </div>
+      <button onClick={onLogout} style={{display:'flex',alignItems:'center',gap:7,marginTop:8,padding:'7px 8px',borderRadius:7,background:'transparent',color:t.er,fontWeight:600,fontSize:13,border:`1px solid ${t.er}25`,cursor:'pointer',width:'100%',textAlign:'left'}}>
+        <span style={{fontSize:13,opacity:0.75}}>↩</span>退出登录
+      </button>
     </div>
   );
 }
@@ -917,10 +1105,10 @@ function WorkspaceView({flowState,setFlowState}){
             {/* mini header */}
             <div style={{marginBottom:14}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:3}}>
-                <div style={{fontSize:11,color:t.txs}}>ShopFlow Web › <span style={{color:t.txm,fontWeight:600}}>checkout-cart-persist</span></div>
+                <div style={{fontSize:11,color:t.txs}}>Workspace › <span style={{color:t.txm,fontWeight:600}}>feature branch</span></div>
               </div>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <h2 style={{fontSize:14,fontWeight:700,color:t.tx}}>WorkflowRun <code style={{fontSize:11,fontWeight:500,background:t.pl,color:t.p,padding:'1px 6px',borderRadius:4,fontFamily:'JetBrains Mono,monospace'}}>a1b2c3</code></h2>
+                <h2 style={{fontSize:14,fontWeight:700,color:t.tx}}>WorkflowRun <code style={{fontSize:11,fontWeight:500,background:t.pl,color:t.p,padding:'1px 6px',borderRadius:4,fontFamily:'JetBrains Mono,monospace'}}>run-id</code></h2>
                 <div style={{display:'flex',gap:4}}>
                   <Btn size="sm" variant="outline" style={{padding:'3px 7px',fontSize:11}} onClick={()=>setFlowState(s=>Math.max(s-1,1))}>‹</Btn>
                   <Btn size="sm" style={{padding:'3px 7px',fontSize:11}} onClick={advance} disabled={flowState>=11}>›</Btn>
@@ -945,7 +1133,7 @@ function WorkspaceView({flowState,setFlowState}){
             {steps.map((step,i)=><StepRow key={step.id} step={step} active={activeIdx===i}/>)}
             {/* branch */}
             <div style={{marginTop:12,padding:'9px 11px',borderRadius:9,background:'rgba(255,255,255,0.3)',border:'1px solid rgba(0,0,0,0.06)'}}>
-              {[{l:'Branch',v:'aww/shopflow-web/a1b2c3'},{l:'Base',v:'8f3a219'},{l:'Commits',v:flowState>=7?'+7':'0'}].map((s,i)=>(
+              {[{l:'Branch',v:'<feature-branch>'},{l:'Base',v:'—'},{l:'Commits',v:flowState>=7?'+7':'0'}].map((s,i)=>(
 
                 <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                   <span style={{fontSize:9.5,color:t.txs,fontWeight:600}}>{s.l}</span>
@@ -973,51 +1161,419 @@ function WorkspaceView({flowState,setFlowState}){
 }
 
 /* ─── OTHER SCREENS ──────────────────────────────────────────────── */
-function ArtifactsView(){
+function WorkspacesView({workspaces=[],runsByWorkspace={},onOpen,onCreate,loading}){
   const t=useT();
-  const arts=[{role:'PRD',title:'购物车持久化需求文档',size:'4.8 KB',time:'9 min ago',by:'human',status:'committed',ver:'v1'},{role:'PLAN',title:'工程实现计划',size:'2.1 KB',time:'3 min ago',by:'planner',status:'committed',ver:'v1'},{role:'TASK_LIST',title:'任务列表 (4 tasks)',size:'1.2 KB',time:'2 min ago',by:'tasker',status:'committed',ver:'v1'},{role:'CODE_PATCH',title:'购物车持久化实现',size:'8.4 KB',time:'刚刚',by:'coder',status:'draft',ver:'v1'}];
+  const sc={amber:{bg:t.pl,tx:t.p,bd:t.pb},teal:{bg:t.agl,tx:t.ag,bd:t.ag+'45'},green:{bg:t.okl,tx:t.ok,bd:t.ok+'45'}};
   return(
-    <div style={{flex:1,overflow:'auto',padding:'22px 24px'}}>
-      <h1 style={{fontSize:17,fontWeight:700,color:t.tx,marginBottom:16}}>产物</h1>
-      <div style={{display:'flex',flexDirection:'column',gap:8,maxWidth:560}}>
-        {arts.map((a,i)=>(
-          <Glass key={i} style={{padding:'13px 15px'}}>
-            <div style={{display:'flex',gap:6,marginBottom:6}}><Badge color={a.role==='PLAN'?'amber':a.role==='CODE_PATCH'?'teal':a.role==='TASK_LIST'?'purple':'gray'}>{a.role}</Badge><Badge color={a.status==='committed'?'green':'gray'}>{a.status}</Badge></div>
-            <div style={{fontSize:13,fontWeight:600,color:t.tx,marginBottom:2}}>{a.title}</div>
-            <div style={{fontSize:11,color:t.txs,display:'flex',gap:6,alignItems:'center'}}><Badge color="gray">{a.ver}</Badge>{a.size} · {a.by==='human'?'👤 人工':'🤖 '+a.by} · {a.time}</div>
-          </Glass>
-        ))}
+    <div style={{flex:1,overflow:'auto',padding:'24px 28px'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:700,color:t.tx,letterSpacing:-0.6,marginBottom:4}}>工作区</h1>
+          <p style={{fontSize:13,color:t.txm}}>选择一个工作区继续从 PRD 到 PR 的交付流程。</p>
+        </div>
+        <Btn onClick={onCreate}>+ 新建 workspace</Btn>
+      </div>
+      {loading&&<div style={{fontSize:13,color:t.txs}}>正在加载真实工作区…</div>}
+      {!loading&&workspaces.length===0&&(
+        <Glass style={{padding:22,maxWidth:520,textAlign:'center'}}>
+          <div style={{fontSize:28,marginBottom:8}}>▦</div>
+          <div style={{fontSize:15,fontWeight:700,color:t.tx,marginBottom:5}}>暂无工作区</div>
+          <div style={{fontSize:12.5,color:t.txm,marginBottom:14}}>创建工作区后，这里会显示真实项目和工作流运行。</div>
+          <Btn onClick={onCreate}>创建 workspace</Btn>
+        </Glass>
+      )}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12,maxWidth:980}}>
+        {workspaces.map((w,i)=>{
+          const runs=runsByWorkspace[w.id]||[];
+          const latest=runs.slice().sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0))[0];
+          const progress=latest?.status==='completed'?100:latest?.status==='running'?50:latest?15:0;
+          const color=latest?.status==='completed'?'green':latest?.status==='running'?'teal':'amber';
+          const c=sc[color]||sc.amber;
+          return(
+            <Glass key={w.id} onClick={()=>onOpen(w.id)} style={{padding:'15px 16px',cursor:'pointer',transition:'transform 0.14s ease',animation:`fadeIn 0.25s ease ${i*0.04}s both`,overflow:'hidden'}}>
+              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10,marginBottom:12}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:15,fontWeight:700,color:t.tx,marginBottom:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{w.name}</div>
+                  <div style={{fontSize:11,color:t.txs,fontFamily:'JetBrains Mono,monospace',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{w.githubRepoUrl||'未连接仓库'}</div>
+                </div>
+                <span style={{padding:'3px 7px',borderRadius:5,fontSize:10.5,fontWeight:700,background:c.bg,color:c.tx,border:`1px solid ${c.bd}`,whiteSpace:'nowrap',flexShrink:0,maxWidth:86,overflow:'hidden',textOverflow:'ellipsis'}}>{latest?.status||'暂无运行'}</span>
+              </div>
+              <div style={{padding:'10px 11px',borderRadius:9,background:'rgba(255,255,255,0.45)',border:'1px solid rgba(0,0,0,0.06)',marginBottom:11}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:10.5,color:t.txs,marginBottom:6}}>
+                  <span>{latest?`WorkflowRun ${latest.id.slice(0,8)}`:'无 active run'}</span><span>{progress}%</span>
+                </div>
+                <div style={{height:5,borderRadius:99,background:'rgba(0,0,0,0.08)',overflow:'hidden'}}>
+                  <div style={{height:'100%',width:progress+'%',borderRadius:99,background:progress===100?t.ok:t.p}}/>
+                </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:11,color:t.txm}}>
+                <span>{latest?.feature_branch||w.defaultBranch||'main'}</span>
+                <span>{fmtDate(latest?.updated_at||w.updatedAt)}</span>
+              </div>
+            </Glass>
+          );
+        })}
       </div>
     </div>
   );
 }
-function AuditView(){
+function RealWorkspaceView({workspace,run,artifactContent={},artifactMeta={},codeTree=[],codeTreeError='',codeFileContent={},gitInfo=null,onCreateRun,onDecision,onRerunStep,onUploadPrd,onReadCodeFile,repairing=false,onRequestArtifactEdit}){
   const t=useT();
-  const evts=[{time:'09:15:00',type:'step.completed',msg:'Step 3 completed — PLAN committed'},{time:'09:14:59',type:'artifact.created',msg:'PLAN artifact v1 (art_3kx)'},{time:'09:14:22',type:'agent_run.started',msg:'AgentRun: Planner Agent'},{time:'09:13:55',type:'decision.approved',msg:'PRD confirmed by human'},{time:'09:13:30',type:'step.completed',msg:'Step 1 workspace created'}];
+  const[selectedStepId,setSelectedStepId]=useState(null);
+  const[tab,setTab]=useState('artifact');
+  const[prdUpload,setPrdUpload]=useState({file:null,loading:false,error:''});
+  const[selectedCodePath,setSelectedCodePath]=useState('');
+  const steps=(run?.steps||[]).slice().sort((a,b)=>a.position-b.position);
+  const workflowActive=steps.find(s=>['running','human_owned'].includes(s.status))||steps.find(s=>s.status==='pending')||steps[steps.length-1];
+  const selected=steps.find(s=>s.id===selectedStepId);
+  const active=selected||workflowActive;
+  const activeArtifactId=active?.output_artifact_ids?.[0];
+  const activeContent=activeArtifactId?artifactContent[activeArtifactId]:null;
+  const agentInputRoles={
+    planner:['PRD'],
+    tasker:['PRD','PLAN'],
+    coder:['PRD','PLAN','TASK_LIST'],
+    tester:['PRD','PLAN','TASK_LIST','CODE_PATCH'],
+    reviewer:['PRD','PLAN','TASK_LIST','CODE_PATCH','TEST_REPORT'],
+    summarizer:['PRD','PLAN','TASK_LIST','CODE_PATCH','TEST_REPORT','REVIEW_COMMENT'],
+  };
+  const inputRoles=active?.agent_role?(agentInputRoles[active.agent_role]||active.input_artifact_roles||[]):active?.input_artifact_roles||[];
+  const inputContent=inputRoles.map(role=>{
+    const source=steps.find(s=>(s.output_artifact_roles||[]).includes(role)&&s.position<=(active?.position||99));
+    const ids=source?.output_artifact_ids||[];
+    return ids.map(id=>`# ${role}\n${artifactContent[id]||'(artifact content loading...)'}`).join('\n\n');
+  }).filter(Boolean).join('\n\n')||'(no upstream artifact input)';
+  const agentPrompt=active?.agent_role?[
+    `You are the ${active.agent_role} agent for workspace "${workspace?.name||'workspace'}".`,
+    `Current step: ${active.name}.`,
+    `Expected outputs: ${(active.output_artifact_roles||[]).join(', ')||'none'}.`,
+    '',
+    'Input artifacts:',
+    inputContent,
+  ].join('\n'):'(human step)';
+  const outputContent=activeContent||'(no output artifact yet)';
+  const statusText={pending:'待处理',running:'运行中',completed:'已完成',failed:'失败',timed_out:'超时',retrying:'重试中',cancelled:'已取消',human_owned:'人工接管'};
+  const isHumanStep=stepOwner(active||{})==='human';
+  const isFinalReview=isHumanStep&&(active?.name?.toLowerCase().includes('final')||active?.position===9);
+  const isPlanReview=isHumanStep&&(active?.name?.toLowerCase().includes('review engineering plan')||active?.position===4);
+  const isCodeStep=active?.agent_role==='coder';
+  const canRetryStep=['failed','timed_out','cancelled','retrying'].includes(active?.status);
+  const flattenFiles=(nodes=[])=>nodes.flatMap(n=>n.type==='file'?[n.path]:flattenFiles(n.children||[]));
+  useEffect(()=>{setSelectedStepId(null);setTab('artifact');setPrdUpload({file:null,loading:false,error:''});setSelectedCodePath('');},[run?.id]);
+  useEffect(()=>{
+    if(!isCodeStep||selectedCodePath||!codeTree.length)return;
+    const first=flattenFiles(codeTree)[0];
+    if(first){setSelectedCodePath(first);onReadCodeFile?.(first);}
+  },[isCodeStep,codeTree,selectedCodePath]);
+  if(!workspace){
+    return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:t.txs}}>未选择工作区</div>;
+  }
+  if(!run){
+    return(
+      <div style={{flex:1,overflow:'auto',padding:'24px 30px'}}>
+        <div style={{maxWidth:720}}>
+          <div style={{fontSize:11,color:t.txs,fontWeight:700,letterSpacing:0.5,marginBottom:4}}>{workspace.slug}</div>
+          <h1 style={{fontSize:22,fontWeight:700,color:t.tx,letterSpacing:-0.5,marginBottom:16}}>{workspace.name}</h1>
+          <Glass style={{padding:24,textAlign:'center'}}>
+            <div style={{fontSize:30,marginBottom:8}}>⬡</div>
+            <div style={{fontSize:15,fontWeight:700,color:t.tx,marginBottom:5}}>暂无 WorkflowRun</div>
+            <div style={{fontSize:12.5,color:t.txm,marginBottom:14}}>这个工作区还没有真实工作流运行。创建运行后，这里会从后端读取步骤、分支和产物内容。</div>
+            <Btn onClick={onCreateRun}>创建 PRD → PR 运行</Btn>
+          </Glass>
+        </div>
+      </div>
+    );
+  }
+  const needsPrdUpload=active?.position===2&&!activeContent;
+  const createWorkspaceArtifact=[
+    `Workspace: ${workspace.name}`,
+    `Location: ${workspace.storagePath||'—'}`,
+    `Created: ${fmtDate(workspace.createdAt)}`,
+  ].join('\n');
+  return(
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <RealFlowNav steps={steps} active={active} onSelect={(id)=>{setSelectedStepId(id);setTab('artifact');}}/>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        <div style={{width:290,flexShrink:0,overflow:'auto',padding:'18px 16px',borderRight:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.15)',backdropFilter:'blur(8px)'}}>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,color:t.txs,marginBottom:3}}>{workspace.name} › <span style={{color:t.txm,fontWeight:600}}>{run.feature_branch||workspace.defaultBranch||'main'}</span></div>
+            <h2 style={{fontSize:14,fontWeight:700,color:t.tx}}>WorkflowRun <code style={{fontSize:11,fontWeight:500,background:t.pl,color:t.p,padding:'1px 6px',borderRadius:4,fontFamily:'JetBrains Mono,monospace'}}>{run.id.slice(0,8)}</code></h2>
+          </div>
+          <div style={{padding:'9px 11px',borderRadius:10,marginBottom:12,background:t.pl,border:`1.5px solid ${t.pb}`}}>
+            <span style={{fontSize:11.5,fontWeight:600,color:t.p,lineHeight:1.4}}>{repairing?'正在同步向导步骤…':`当前状态：${statusText[active?.status]||active?.status||run.status}`}</span>
+          </div>
+          <div style={{display:'flex',gap:8,marginBottom:10}}>
+            <span style={{display:'flex',alignItems:'center',gap:3,fontSize:10,color:t.p,fontWeight:600}}><span style={{width:2.5,height:12,borderRadius:99,background:t.p}}/>人工</span>
+            <span style={{display:'flex',alignItems:'center',gap:3,fontSize:10,color:t.ag,fontWeight:600}}><span style={{width:2.5,height:12,borderRadius:99,background:t.ag}}/>Agent</span>
+          </div>
+          {steps.map(step=><StepCard key={step.id} active={step.id===active?.id} onClick={()=>{setSelectedStepId(step.id);setTab('artifact');}} step={{id:step.position,name:step.name,owner:stepOwner(step),agentRole:step.agent_role,status:step.status,desc:(step.output_artifact_ids||[]).length?`${step.output_artifact_ids.length} 个产物`:'暂无产物'}}/>)}
+          <div style={{marginTop:12,padding:'9px 11px',borderRadius:9,background:'rgba(255,255,255,0.3)',border:'1px solid rgba(0,0,0,0.06)'}}>
+            {[{l:'Branch',v:gitInfo?.branch||run.feature_branch||'—'},{l:'Base',v:run.base_commit_sha||gitInfo?.head||'—'},{l:'Commits',v:String(gitInfo?.commitCount??'—')}].map((s,i)=>(
+              <div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,marginBottom:3}}>
+                <span style={{fontSize:9.5,color:t.txs,fontWeight:600}}>{s.l}</span>
+                <span style={{fontSize:9.5,fontFamily:'JetBrains Mono,monospace',color:t.txm,textAlign:'right'}}>{s.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
+          <div style={{padding:'18px 24px',borderBottom:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.2)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <h1 style={{fontSize:17,fontWeight:700,color:t.tx}}>{active?.name||'WorkflowRun'}</h1>
+              {active?.agent_role&&<OwnerTag owner="agent" role={active.agent_role}/>}
+              {!active?.agent_role&&<OwnerTag owner="human"/>}
+              <Badge color={active?.status==='completed'?'green':active?.status==='running'?'teal':'amber'}>{statusText[active?.status]||active?.status||run.status}</Badge>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:0,padding:'0 24px',borderBottom:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.25)'}}>
+            {(isHumanStep?['artifact']:['artifact','input','output']).map(k=><button key={k} onClick={()=>setTab(k)} style={{padding:'9px 13px',border:'none',cursor:'pointer',background:'transparent',fontSize:12,fontWeight:700,color:tab===k?t.p:t.txs,borderBottom:`2px solid ${tab===k?t.p:'transparent'}`,marginBottom:-1}}>{k==='artifact'?'产物':k==='input'?'Input':'Output'}</button>)}
+          </div>
+          <div style={{flex:1,overflow:'auto',padding:'22px 24px'}}>
+            {tab==='artifact'&&(
+              active?.position===1?(
+                <pre style={{whiteSpace:'pre-wrap',fontFamily:'JetBrains Mono,monospace',fontSize:12.5,lineHeight:1.8,color:t.tx}}>{createWorkspaceArtifact}</pre>
+              ):isCodeStep?(
+                <div style={{height:'100%',minHeight:420,display:'grid',gridTemplateColumns:'280px minmax(0,1fr)',gap:14}}>
+                  <div style={{minHeight:0,overflow:'auto',borderRight:`1px solid ${t.glb}`,paddingRight:12}}>
+                    <div style={{fontSize:11,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:8}}>CODE TREE</div>
+                    <FileTree nodes={codeTree} selectedPath={selectedCodePath} onSelect={(path)=>{setSelectedCodePath(path);onReadCodeFile?.(path);}}/>
+                    {!codeTree.length&&<div style={{fontSize:12,color:codeTreeError?t.er:t.txm,marginTop:10,lineHeight:1.6}}>{codeTreeError||'当前 workspace/code 还没有代码文件。Agent Implementation 完成后会显示 AI Agent 写入并提交的代码树。'}</div>}
+                  </div>
+                  <div style={{minWidth:0,minHeight:0,display:'flex',flexDirection:'column'}}>
+                    <div style={{fontSize:11,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:8}}>{selectedCodePath||'CODE'}</div>
+                    <pre style={{flex:1,minHeight:0,overflow:'auto',whiteSpace:'pre-wrap',fontFamily:'JetBrains Mono,monospace',fontSize:12,lineHeight:1.7,color:t.tx,background:'rgba(255,255,255,0.45)',border:`1px solid ${t.glb}`,borderRadius:10,padding:14}}>{selectedCodePath?(codeFileContent[selectedCodePath]??'Loading file...'):'选择左侧文件查看真实代码'}</pre>
+                  </div>
+                </div>
+              ):(activeContent||isPlanReview)?(
+                <pre style={{whiteSpace:'pre-wrap',fontFamily:'JetBrains Mono,monospace',fontSize:12.5,lineHeight:1.8,color:t.tx}}>{activeContent||inputContent}</pre>
+              ):needsPrdUpload?(
+                <Glass style={{padding:18,maxWidth:560}}>
+                  <div style={{fontSize:14,fontWeight:700,color:t.tx,marginBottom:6}}>上传 PRD</div>
+                  <div style={{fontSize:12,color:t.txm,marginBottom:12}}>当前步骤还没有 PRD 产物。只支持 Markdown 文件。</div>
+                  <input type="file" accept=".md,text/markdown" onChange={(e)=>{
+                    const file=e.target.files?.[0]||null;
+                    if(file&&!file.name.toLowerCase().endsWith('.md')){
+                      setPrdUpload({file:null,loading:false,error:'当前只支持上传 .md 文件'});
+                      e.target.value='';
+                      return;
+                    }
+                    setPrdUpload({file,loading:false,error:''});
+                  }} style={{width:'100%',padding:'9px 10px',borderRadius:9,border:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.65)',fontSize:12,marginBottom:10}}/>
+                  {prdUpload.error&&<div style={{fontSize:11,color:t.er,marginBottom:10}}>{prdUpload.error}</div>}
+                  <Btn disabled={!prdUpload.file||prdUpload.loading} onClick={async()=>{
+                    if(!prdUpload.file)return;
+                    setPrdUpload(v=>({...v,loading:true,error:''}));
+                    try{
+                      await onUploadPrd(active.id,prdUpload.file);
+                      setPrdUpload({file:null,loading:false,error:''});
+                    }catch(e){
+                      setPrdUpload(v=>({...v,loading:false,error:e?.message||'上传 PRD 失败'}));
+                    }
+                  }}>{prdUpload.loading?'上传中…':'上传 PRD 并继续'}</Btn>
+                </Glass>
+              ):(
+                <Glass style={{padding:20,textAlign:'center',maxWidth:520}}>
+                  <div style={{fontSize:24,marginBottom:8}}>◌</div>
+                  <div style={{fontSize:14,fontWeight:700,color:t.tx,marginBottom:5}}>暂无可展示产物</div>
+                  <div style={{fontSize:12,color:t.txm}}>这个步骤还没有 committed artifact，完成步骤后会从后端读取真实内容。</div>
+                </Glass>
+              )
+            )}
+            {!isHumanStep&&tab==='input'&&<pre style={{whiteSpace:'pre-wrap',fontFamily:'JetBrains Mono,monospace',fontSize:12.2,lineHeight:1.8,color:t.tx}}>{agentPrompt}</pre>}
+            {!isHumanStep&&tab==='output'&&<pre style={{whiteSpace:'pre-wrap',fontFamily:'JetBrains Mono,monospace',fontSize:12.2,lineHeight:1.8,color:t.tx}}>{outputContent}</pre>}
+          </div>
+          {isHumanStep&&active?.status!=='completed'&&(
+            <div style={{padding:'14px 24px',borderTop:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.25)'}}>
+              <div style={{padding:'9px 12px',borderRadius:9,background:t.pl,border:`1.5px solid ${t.pb}`,marginBottom:11,fontSize:11.5,color:t.txm}}>
+                <span style={{fontWeight:700,color:t.p}}>⚡ 需要你的决策</span> — 人工步骤需要确认后工作流继续。
+              </div>
+              <Btn style={{width:'100%',justifyContent:'center',marginBottom:7,fontSize:14}} size="lg" onClick={()=>onDecision(active.id,'approve')}>✓ 批准并继续</Btn>
+              <Btn variant="outline" style={{width:'100%',justifyContent:'center',marginBottom:7}} onClick={()=>isPlanReview&&onRequestArtifactEdit?onRequestArtifactEdit('PLAN',active.position):isFinalReview&&onRequestArtifactEdit?onRequestArtifactEdit('PRD',2):onDecision(active.id,'request_changes')}>↺ 请求修改</Btn>
+              <Btn variant="danger" style={{width:'100%',justifyContent:'center'}} onClick={()=>confirm('确认拒绝？工作流将终止。')&&onDecision(active.id,'reject')}>✕ 拒绝并终止工作流</Btn>
+            </div>
+          )}
+          {!isHumanStep&&active?.agent_role==='planner'&&active?.status==='completed'&&(
+            <div style={{padding:'14px 24px',borderTop:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.25)'}}>
+              <Btn variant="outline" style={{width:'100%',justifyContent:'center'}} onClick={()=>onRequestArtifactEdit&&onRequestArtifactEdit('PLAN')}>↺ 请求修改计划</Btn>
+            </div>
+          )}
+          {canRetryStep&&(
+            <div style={{padding:'14px 24px',borderTop:`1px solid ${t.glb}`,background:'rgba(255,255,255,0.25)'}}>
+              <div style={{padding:'9px 12px',borderRadius:9,background:t.erl,border:`1.5px solid ${t.er}30`,marginBottom:11,fontSize:11.5,color:t.txm}}>
+                <span style={{fontWeight:700,color:t.er}}>步骤执行失败</span> — 可以用相同输入重新触发这个任务。
+              </div>
+              <Btn variant="primary" style={{width:'100%',justifyContent:'center',fontSize:14}} size="lg" onClick={()=>onRerunStep&&onRerunStep(active.id)}>
+                ↻ 重试步骤
+              </Btn>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function ArtifactsView({run,artifactMeta={},artifactContent={}}){
+  const t=useT();
+  const ids=(run?.steps||[]).flatMap(s=>s.output_artifact_ids||[]);
+  const artifactTime=(a)=>new Date(a.committed_at||a.committedAt||a.created_at||a.createdAt||0).getTime();
+  const arts=ids.map(id=>artifactMeta[id]).filter(Boolean).sort((a,b)=>artifactTime(a)-artifactTime(b));
+  const[selectedId,setSelectedId]=useState('');
+  useEffect(()=>{if(!selectedId&&arts[0]?.id)setSelectedId(arts[0].id);},[run?.id,arts.map(a=>a.id).join('|')]);
+  const selected=arts.find(a=>a.id===selectedId)||arts[0];
+  return(
+    <div style={{flex:1,overflow:'hidden',padding:'22px 24px',display:'flex',flexDirection:'column'}}>
+      <h1 style={{fontSize:17,fontWeight:700,color:t.tx,marginBottom:16}}>产物</h1>
+      <div style={{flex:1,minHeight:0,display:'grid',gridTemplateColumns:'340px minmax(0,1fr)',gap:16}}>
+      <div style={{display:'flex',flexDirection:'column',gap:8,overflow:'auto',paddingRight:4}}>
+        {!run&&<Glass style={{padding:18,color:t.txm,fontSize:13}}>暂无运行，无法显示产物。</Glass>}
+        {run&&arts.length===0&&<Glass style={{padding:18,color:t.txm,fontSize:13}}>当前运行还没有 committed artifact。</Glass>}
+        {arts.map((a,i)=>(
+          <Glass key={i} onClick={()=>setSelectedId(a.id)} style={{padding:'13px 15px',cursor:'pointer',border:selected?.id===a.id?`1.5px solid ${t.pb}`:'1px solid rgba(255,255,255,0.7)',background:selected?.id===a.id?t.pl:'rgba(255,255,255,0.48)'}}>
+            <div style={{display:'flex',gap:6,marginBottom:6}}><Badge color={a.role==='PLAN'?'amber':a.role==='CODE_PATCH'?'teal':a.role==='TASK_LIST'?'purple':'gray'}>{a.role}</Badge><Badge color={a.status==='committed'?'green':'gray'}>{a.status}</Badge></div>
+            <div style={{fontSize:13,fontWeight:600,color:t.tx,marginBottom:2}}>{a.title||a.id}</div>
+            <div style={{fontSize:11,color:t.txs,display:'flex',gap:6,alignItems:'center'}}><Badge color="gray">v{a.version||1}</Badge>{(artifactContent[a.id]||'').length} chars · {(a.created_by_type||a.createdByType)==='human'?'👤 人工':'🤖 '+(a.created_by_type||a.createdByType||'agent')} · {fmtDate(a.committed_at||a.committedAt||a.created_at||a.createdAt)}</div>
+          </Glass>
+        ))}
+      </div>
+      <Glass style={{minHeight:0,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        {selected?(
+          <>
+            <div style={{padding:'13px 15px',borderBottom:`1px solid ${t.glb}`,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:800,color:t.tx,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{selected.title||selected.id}</div>
+                <div style={{fontSize:10.5,color:t.txs,fontFamily:'JetBrains Mono,monospace',marginTop:2}}>{selected.role} · v{selected.version||1} · {selected.id}</div>
+              </div>
+              <Badge color={selected.status==='committed'?'green':'gray'}>{selected.status}</Badge>
+            </div>
+            <pre style={{flex:1,minHeight:0,overflow:'auto',whiteSpace:'pre-wrap',fontFamily:'JetBrains Mono,monospace',fontSize:12.2,lineHeight:1.75,color:t.tx,padding:16}}>{artifactContent[selected.id]||'(artifact content loading...)'}</pre>
+          </>
+        ):<div style={{padding:18,color:t.txm,fontSize:13}}>选择一个产物查看真实内容。</div>}
+      </Glass>
+      </div>
+    </div>
+  );
+}
+function AuditView({run,auditEvents=[]}){
+  const t=useT();
+  const evts=auditEvents.length?auditEvents:(run?[{time:run.created_at,type:'run.created',message:`WorkflowRun ${run.id} created`},...(run.steps||[]).map(s=>({time:s.updated_at,type:`step.${s.status}`,message:`Step ${s.position}: ${s.name} — ${s.status}`}))]:[]);
   const tc={'step.completed':'green','artifact.created':'amber','agent_run.started':'teal','decision.approved':'purple'};
   return(
     <div style={{flex:1,overflow:'auto',padding:'22px 24px'}}>
       <h1 style={{fontSize:17,fontWeight:700,color:t.tx,marginBottom:16}}>审计日志</h1>
       <div style={{maxWidth:620}}>
+        {evts.length===0&&<Glass style={{padding:18,color:t.txm,fontSize:13}}>暂无真实运行事件。</Glass>}
         {evts.map((e,i)=>(
           <div key={i} style={{display:'flex',gap:12,borderBottom:'1px solid rgba(0,0,0,0.05)',padding:'10px 4px'}}>
-            <span style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:t.txs,flexShrink:0,paddingTop:2}}>{e.time}</span>
-            <div><Badge color={tc[e.type]||'gray'}>{e.type}</Badge><div style={{fontSize:12.5,color:t.tx,marginTop:3,lineHeight:1.5}}>{e.msg}</div></div>
+            <span style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:t.txs,flexShrink:0,paddingTop:2}}>{fmtDate(e.time)}</span>
+            <div><Badge color={tc[e.type]||'gray'}>{e.type}</Badge><div style={{fontSize:12.5,color:t.tx,marginTop:3,lineHeight:1.5}}>{e.message||e.msg}</div></div>
           </div>
         ))}
       </div>
     </div>
   );
 }
-function SettingsView(){
+function SettingsView({workspace}){
   const t=useT();
+  const agents=[
+    {id:'hermes',name:'Hermes',desc:'本地 Hermes Agent CLI',tone:t.p},
+    {id:'codex',name:'Codex',desc:'OpenAI Codex CLI',tone:t.ok},
+    {id:'claude',name:'Claude Code',desc:'Anthropic Claude Code CLI',tone:t.ag},
+    {id:'openclaw',name:'OpenClaw',desc:'OpenClaw CLI',tone:'#7c3aed'},
+  ];
+  const[sel,setSel]=useState(workspace?.preferredProvider||localStorage.getItem('aww-agent-cli')||'codex');
+  const[status,setStatus]=useState({});
+  const[testing,setTesting]=useState(false);
+  const[test,setTest]=useState(null);
+  const[saving,setSaving]=useState(false);
+  const[saveMsg,setSaveMsg]=useState('');
+  const token=()=>{
+    return authToken();
+  };
+  const api=(path,opts={})=>{
+    const tk=token();
+    return fetch(path,{...opts,headers:{Accept:'application/json',...(opts.body?{'Content-Type':'application/json'}:{}),...(tk?{Authorization:`Bearer ${tk}`}:{})}}).then(r=>r.json());
+  };
+  const refresh=()=>api('/api/v1/agent-cli/status').then(j=>setStatus(Object.fromEntries((j.data||[]).map(s=>[s.id,s])))).catch(()=>setStatus({}));
+  useEffect(()=>{refresh();},[]);
+  useEffect(()=>{
+    if(workspace?.preferredProvider)setSel(workspace.preferredProvider);
+  },[workspace?.id,workspace?.preferredProvider]);
+  const save=async()=>{
+    setSaving(true);setSaveMsg('');
+    localStorage.setItem('aww-agent-cli',sel);
+    try{
+      if(workspace?.id)await api(`/api/v1/workspaces/${workspace.id}`,{method:'PATCH',body:JSON.stringify({preferredProvider:sel})});
+      setSaveMsg('已保存');
+    }catch{setSaveMsg('已保存到本地');}
+    setSaving(false);
+  };
+  const runTest=async()=>{
+    setTesting(true);setTest(null);
+    try{
+      const j=await api('/api/v1/agent-cli/test',{method:'POST',body:JSON.stringify({agent:sel})});
+      setTest(j.data||{ok:false,error:'测试失败'});
+    }catch(e){setTest({ok:false,error:e.message||'测试请求失败',output:''});}
+    setTesting(false);
+  };
   return(
-    <div style={{flex:1,overflow:'auto',padding:'22px 24px'}}>
-      <h1 style={{fontSize:17,fontWeight:700,color:t.tx,marginBottom:16}}>设置</h1>
-      <div style={{maxWidth:480,display:'flex',flexDirection:'column',gap:9}}>
-        {[{l:'工作区名称',v:'ShopFlow Web'},{l:'仓库',v:'github.com/acme/shopflow-web'},{l:'默认分支',v:'main'},{l:'AI 模型',v:'claude-sonnet-4-6'}].map((item,i)=>(
-          <Glass key={i} style={{padding:'12px 15px'}}><div style={{fontSize:9.5,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:2}}>{item.l.toUpperCase()}</div><div style={{fontSize:13.5,color:t.tx}}>{item.v}</div></Glass>
-        ))}
+    <div style={{flex:1,overflow:'auto',padding:'24px 30px'}}>
+      <div style={{maxWidth:820}}>
+        <div style={{marginBottom:18}}>
+          <div style={{fontSize:11,color:t.txs,fontWeight:700,letterSpacing:0.5,marginBottom:4}}>{workspace?.slug||'WORKSPACE'}</div>
+          <h1 style={{fontSize:22,fontWeight:700,color:t.tx,letterSpacing:-0.5}}>设置</h1>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+          {[{l:'工作区名称',v:workspace?.name||'—'},{l:'仓库',v:workspace?.githubRepoUrl||'未连接仓库'},{l:'默认分支',v:workspace?.defaultBranch||'main'},{l:'Workspace 位置',v:workspace?.storagePath||'—'}].map((item,i)=>(
+            <Glass key={i} style={{padding:'14px 16px'}}>
+              <div style={{fontSize:9.5,fontWeight:700,color:t.txs,letterSpacing:0.5,marginBottom:4}}>{item.l.toUpperCase()}</div>
+              <div style={{fontSize:14,color:t.tx,fontFamily:i===3?'JetBrains Mono,monospace':'DM Sans,sans-serif',wordBreak:'break-all'}}>{item.v}</div>
+            </Glass>
+          ))}
+        </div>
+        <Glass style={{padding:18}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:14}}>
+            <div>
+              <div style={{fontSize:15,fontWeight:700,color:t.tx}}>AI Agent CLI</div>
+              <div style={{fontSize:12,color:t.txm,marginTop:3}}>选择当前工作区使用的 Agent，并测试后端环境中的 CLI 是否可用。</div>
+            </div>
+            <Btn variant="outline" size="sm" onClick={refresh}>刷新状态</Btn>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:9}}>
+            {agents.map(a=>{
+              const s=status[a.id]||{};
+              const active=sel===a.id;
+              return(
+                <button key={a.id} onClick={()=>{setSel(a.id);setTest(null);}} style={{minHeight:118,textAlign:'left',padding:12,borderRadius:10,border:`1.5px solid ${active?t.pb:'rgba(0,0,0,0.07)'}`,background:active?t.pl:'rgba(255,255,255,0.42)',cursor:'pointer',boxShadow:active?`0 6px 22px ${t.p}18`:'none'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:8}}>
+                    <span style={{fontSize:13,fontWeight:800,color:active?t.p:t.tx}}>{a.name}</span>
+                    <span style={{width:8,height:8,borderRadius:'50%',background:s.installed?t.ok:t.er,boxShadow:`0 0 0 3px ${s.installed?t.okl:t.erl}`}}/>
+                  </div>
+                  <div style={{fontSize:10.5,color:t.txs,fontFamily:'JetBrains Mono,monospace',marginBottom:6}}>{a.id}</div>
+                  <div style={{fontSize:11,color:t.txm,lineHeight:1.35}}>{a.desc}</div>
+                  <div style={{fontSize:10,color:s.installed?t.ok:t.er,fontWeight:700,marginTop:8}}>{s.installed?'已安装':'未检测到'}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{marginTop:14,padding:13,borderRadius:11,background:'rgba(255,255,255,0.38)',border:'1px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:t.tx}}>当前选择：{agents.find(a=>a.id===sel)?.name}</div>
+              <div style={{fontSize:11,color:t.txs,fontFamily:'JetBrains Mono,monospace',marginTop:3}}>{status[sel]?.version||status[sel]?.error||'尚未检测版本'}</div>
+              {saveMsg&&<div style={{fontSize:11,color:t.ok,fontWeight:700,marginTop:5}}>{saveMsg}</div>}
+            </div>
+            <div style={{display:'flex',gap:8,flexShrink:0}}>
+              <Btn variant="outline" onClick={runTest} disabled={testing}>{testing?'测试中…':'测试 Agent'}</Btn>
+              <Btn onClick={save} disabled={saving}>{saving?'保存中…':'保存配置'}</Btn>
+            </div>
+          </div>
+          {test&&(
+            <div style={{marginTop:12,padding:13,borderRadius:11,background:test.ok?t.okl:t.erl,border:`1px solid ${test.ok?t.ok+'45':t.er+'45'}`}}>
+              <div style={{fontSize:12,fontWeight:800,color:test.ok?t.ok:t.er,marginBottom:6}}>{test.ok?'Agent 测试通过':'Agent 测试失败'}</div>
+              <div style={{fontSize:10.5,color:t.txm,marginBottom:8}}>Stage: {test.stage||'request'} · Command: {test.command||sel} · {test.durationMs||0}ms</div>
+              <pre style={{maxHeight:150,overflow:'auto',whiteSpace:'pre-wrap',fontSize:10.5,lineHeight:1.55,color:t.tx,background:'rgba(255,255,255,0.55)',border:'1px solid rgba(0,0,0,0.06)',borderRadius:8,padding:10,fontFamily:'JetBrains Mono,monospace'}}>{test.output||test.error||'No output'}</pre>
+            </div>
+          )}
+        </Glass>
       </div>
     </div>
   );
@@ -1051,10 +1607,25 @@ function TweaksPanel({tweaks,setTweaks,vis}){
 function App(){
   const stored=JSON.parse(localStorage.getItem('aww-tw2')||'null')||TWEAK_DEFAULTS;
   const[tweaks,setTweaksRaw]=useState(stored);
-  const[screen,setScreen]=useState('workspace');
+  const[screen,setScreen]=useState(()=>parentPath().includes('/settings')?'settings':parentPath().startsWith('/w/')?'workspace':'workspaces');
   const[showWizard,sSW]=useState(false);
   const[flowState,setFlowState]=useState(()=>parseInt(localStorage.getItem('aww-flow2')||'5'));
   const[twVis,sTWV]=useState(false);
+  const[workspaces,setWorkspaces]=useState([]);
+  const[selectedWorkspaceId,setSelectedWorkspaceId]=useState(localStorage.getItem('aww-selected-workspace')||'');
+  const[runsByWorkspace,setRunsByWorkspace]=useState({});
+  const[activeRun,setActiveRun]=useState(null);
+  const[artifactContent,setArtifactContent]=useState({});
+  const[artifactMeta,setArtifactMeta]=useState({});
+  const[codeTree,setCodeTree]=useState([]);
+  const[codeTreeError,setCodeTreeError]=useState('');
+  const[codeFileContent,setCodeFileContent]=useState({});
+  const[gitInfo,setGitInfo]=useState(null);
+  const[auditEvents,setAuditEvents]=useState([]);
+  const[loadingData,setLoadingData]=useState(true);
+  const[repairingRun,setRepairingRun]=useState(false);
+  const[toast,sToast]=useState(null);
+  const[artifactEdit,setArtifactEdit]=useState({open:false,role:'PRD',targetPosition:2,title:'',heading:'',description:'',content:'',loading:false,submitting:false});
 
   const setTweaks=fn=>{setTweaksRaw(tw=>{const next=typeof fn==='function'?fn(tw):fn;localStorage.setItem('aww-tw2',JSON.stringify(next));window.parent.postMessage({type:'__edit_mode_set_keys',edits:next},'*');return next;});};
   useEffect(()=>{localStorage.setItem('aww-flow2',String(flowState));},[flowState]);
@@ -1065,26 +1636,294 @@ function App(){
     });
     window.parent.postMessage({type:'__edit_mode_available'},'*');
   },[]);
+  const activeWorkspace=workspaces.find(w=>w.id===selectedWorkspaceId)||workspaces[0];
+  const repairOnboardingRun=async(detail)=>{
+    const steps=(detail?.steps||[]).slice().sort((a,b)=>a.position-b.position);
+    const createStep=steps.find(s=>s.position===1);
+    const prdStep=steps.find(s=>s.position===2);
+    const hasPrd=(prdStep?.output_artifact_ids||[]).length>0;
+    if(!createStep||!prdStep||!hasPrd)return detail;
+    const needsCreate=createStep.status!=='completed';
+    const needsPrd=prdStep.status!=='completed';
+    if(!needsCreate&&!needsPrd)return detail;
+    setRepairingRun(true);
+    try{
+      if(needsCreate)await apiJson(`/api/v1/steps/${createStep.id}/decision`,{method:'POST',body:JSON.stringify({action:'approve',comment:'Auto-complete workspace creation after onboarding'})});
+      if(needsPrd)await apiJson(`/api/v1/steps/${prdStep.id}/decision`,{method:'POST',body:JSON.stringify({action:'approve',comment:'Auto-complete PRD import after onboarding'})});
+      const refreshed=await apiJson(`/api/v1/runs/${detail.id}`);
+      return refreshed.data;
+    }finally{
+      setRepairingRun(false);
+    }
+  };
+  const loadRuns=async(wsList)=>{
+    const pairs=await Promise.all(wsList.map(async w=>{
+      try{
+        const j=await apiJson(`/api/v1/workspaces/${w.id}/runs`);
+        return [w.id,j.data||[]];
+      }catch{return [w.id,[]];}
+    }));
+    const next=Object.fromEntries(pairs);
+    setRunsByWorkspace(next);
+    const pathSlug=workspaceSlugFromPath();
+    const storedId=localStorage.getItem('aww-selected-workspace')||selectedWorkspaceId;
+    const ws=wsList.find(w=>pathSlug&&(w.slug===pathSlug||w.name===pathSlug||w.id===pathSlug))||wsList.find(w=>w.id===(storedId||wsList[0]?.id))||wsList[0];
+    if(ws&&ws.id!==selectedWorkspaceId){
+      setSelectedWorkspaceId(ws.id);
+      localStorage.setItem('aww-selected-workspace',ws.id);
+    }
+    const latest=(next[ws?.id]||[]).slice().sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0))[0];
+    if(latest){
+      const d=await apiJson(`/api/v1/runs/${latest.id}`);
+      setActiveRun(await repairOnboardingRun(d.data));
+    }else setActiveRun(null);
+  };
+  const loadData=async()=>{
+    setLoadingData(true);
+    try{
+      const j=await apiJson('/api/v1/workspaces');
+      const ws=j.data||[];
+      setWorkspaces(ws);
+      const pathSlug=workspaceSlugFromPath();
+      const pathWorkspace=ws.find(w=>pathSlug&&(w.slug===pathSlug||w.name===pathSlug||w.id===pathSlug));
+      if(pathWorkspace){
+        setSelectedWorkspaceId(pathWorkspace.id);
+        localStorage.setItem('aww-selected-workspace',pathWorkspace.id);
+      }else if(ws.length&&!selectedWorkspaceId){
+        setSelectedWorkspaceId(ws[0].id);
+        localStorage.setItem('aww-selected-workspace',ws[0].id);
+      }
+      await loadRuns(ws);
+    }catch{
+      setWorkspaces([]);setRunsByWorkspace({});setActiveRun(null);
+    }
+    setLoadingData(false);
+  };
+  useEffect(()=>{loadData();},[]);
+  const activeArtifactIds=(activeRun?.steps||[]).flatMap(s=>s.output_artifact_ids||[]);
+  useEffect(()=>{
+    const ids=activeArtifactIds;
+    ids.forEach(id=>{
+      if(!artifactMeta[id])apiJson(`/api/v1/artifacts/${id}`).then(j=>setArtifactMeta(c=>({...c,[id]:j.data}))).catch(()=>{});
+      if(artifactContent[id])return;
+      apiJson(`/api/v1/artifacts/${id}/content`).then(j=>setArtifactContent(c=>({...c,[id]:j.data?.content||''}))).catch(()=>{});
+    });
+  },[activeRun?.id,activeArtifactIds.join('|')]);
+  useEffect(()=>{
+    if(!activeRun?.id){setAuditEvents([]);return;}
+    apiJson(`/api/v1/runs/${activeRun.id}/audit`).then(j=>setAuditEvents(j.data||[])).catch(()=>setAuditEvents([]));
+  },[activeRun?.id,activeRun?.updated_at,activeArtifactIds.join('|')]);
+  const codeTreeRefreshKey=(activeRun?.steps||[]).map(s=>[
+    s.id,
+    s.status,
+    s.updated_at||s.updatedAt||'',
+    (s.output_artifact_ids||[]).join(',')
+  ].join(':')).join('|');
+  useEffect(()=>{
+    if(!activeWorkspace?.id){setCodeTree([]);setCodeTreeError('');setCodeFileContent({});return;}
+    setCodeFileContent({});
+    setCodeTreeError('');
+    apiJson(`/api/v1/workspaces/${activeWorkspace.id}/files?area=code`).then(j=>{
+      setCodeTree(j.data||[]);
+      setCodeTreeError('');
+    }).catch(e=>{
+      setCodeTree([]);
+      setCodeTreeError(e?.message||'代码目录加载失败');
+    });
+    apiJson(`/api/v1/workspaces/${activeWorkspace.id}/git`).then(j=>setGitInfo(j.data||null)).catch(()=>setGitInfo(null));
+  },[activeWorkspace?.id,activeRun?.id,codeTreeRefreshKey]);
+  const readCodeFile=async(path)=>{
+    if(!activeWorkspace?.id||!path)return;
+    if(codeFileContent[path]!==undefined)return;
+    setCodeFileContent(prev=>({...prev,[path]:'Loading file...'}));
+    try{
+      const j=await apiJson(`/api/v1/workspaces/${activeWorkspace.id}/files/content?area=code&path=${encodeURIComponent(path)}`);
+      setCodeFileContent(prev=>({...prev,[path]:j.data?.content||''}));
+    }catch(e){
+      setCodeFileContent(prev=>({...prev,[path]:e?.message||'Failed to load file'}));
+    }
+  };
+  const selectWorkspace=async(id)=>{
+    setSelectedWorkspaceId(id);localStorage.setItem('aww-selected-workspace',id);setScreen('workspace');pushParentPath('/w/'+(workspaces.find(w=>w.id===id)?.slug||id));
+    const latest=(runsByWorkspace[id]||[]).slice().sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0))[0];
+    if(latest){const d=await apiJson(`/api/v1/runs/${latest.id}`);setActiveRun(await repairOnboardingRun(d.data));}else setActiveRun(null);
+  };
+  const reloadActiveRun=async()=>{
+    if(!activeRun?.id)return;
+    const d=await apiJson(`/api/v1/runs/${activeRun.id}`);
+    const repaired=await repairOnboardingRun(d.data);
+    setActiveRun(repaired);
+    const wsId=repaired.workspace_id;
+    if(wsId){
+      const j=await apiJson(`/api/v1/workspaces/${wsId}/runs`);
+      setRunsByWorkspace(prev=>({...prev,[wsId]:j.data||[]}));
+    }
+  };
+  useEffect(()=>{
+    if(!activeRun?.id)return;
+    const shouldPoll=activeRun.status==='running'||(activeRun.steps||[]).some(s=>['running','retrying'].includes(s.status));
+    if(!shouldPoll)return;
+    const timer=setInterval(()=>{reloadActiveRun().catch(()=>{});},3000);
+    return()=>clearInterval(timer);
+  },[activeRun?.id,activeRun?.status,JSON.stringify((activeRun?.steps||[]).map(s=>[s.id,s.status]))]);
+  const editConfig={
+    PRD:{role:'PRD',targetPosition:2,title:'PRD（人工修订）',heading:'修改 PRD 并重新执行',description:'修改后将从“生成工程计划”步骤重新开始执行'},
+    PLAN:{role:'PLAN',targetPosition:3,title:'工程计划（人工修订）',heading:'修改工程计划并重新执行',description:'修改后将从“任务拆解”步骤重新开始执行'},
+  };
+  const openArtifactEdit=async(role,targetPosition)=>{
+    const cfg=editConfig[role]||editConfig.PRD;
+    const effectiveCfg={...cfg,...(targetPosition?{targetPosition}: {})};
+    setArtifactEdit(e=>({...e,...effectiveCfg,open:true,content:'',loading:true,submitting:false}));
+    try{
+      const steps=(activeRun?.steps||[]).slice().sort((a,b)=>a.position-b.position);
+      const sourceStep=steps
+        .filter(s=>s.position<=effectiveCfg.targetPosition&&(s.output_artifact_roles||[]).includes(effectiveCfg.role)&&(s.output_artifact_ids||[]).length)
+        .slice(-1)[0];
+      const artId=(sourceStep?.output_artifact_ids||[])[0];
+      if(artId){
+        const j=await apiJson(`/api/v1/artifacts/${artId}/content`);
+        setArtifactEdit(e=>({...e,content:j.data?.content||'',loading:false}));
+      }else{
+        setArtifactEdit(e=>({...e,content:'',loading:false}));
+      }
+    }catch{
+      setArtifactEdit(e=>({...e,loading:false}));
+    }
+  };
+  const submitArtifactEdit=async()=>{
+    if(!activeRun?.id)return;
+    setArtifactEdit(e=>({...e,submitting:true}));
+    try{
+      await apiJson(`/api/v1/runs/${activeRun.id}/rewind`,{method:'POST',body:JSON.stringify({target_position:artifactEdit.targetPosition,role:artifactEdit.role,content_inline:artifactEdit.content,title:artifactEdit.title})});
+      sToast(`✓ ${artifactEdit.role==='PRD'?'PRD':'工程计划'} 已修订，工作流已重新执行`);
+      setArtifactContent({});
+      setArtifactMeta({});
+      setArtifactEdit(e=>({...e,open:false,content:'',loading:false,submitting:false}));
+      await reloadActiveRun();
+    }catch(e){
+      sToast('操作失败：'+(e?.message||'未知错误'));
+      setArtifactEdit(e=>({...e,submitting:false}));
+    }
+  };
+  const decideStep=async(stepId,action)=>{
+    const msgs={approve:'✓ 已批准，工作流继续',reject:'✕ 已拒绝，工作流终止',request_changes:'↺ 已发送修改请求，步骤重置为等待中',rerun:'↺ 已重新执行步骤',edit:'✏️ 编辑已提交',take_over:'👤 已接管步骤'};
+    try{
+      await apiJson(`/api/v1/steps/${stepId}/decision`,{method:'POST',body:JSON.stringify({action,comment:`${action} from workspace UI`})});
+      await reloadActiveRun();
+      sToast(msgs[action]||'操作成功');
+    }catch(e){
+      sToast('操作失败：'+(e?.message||'未知错误'));
+    }
+  };
+  const rerunStep=async(stepId)=>{
+    try{
+      await apiJson(`/api/v1/steps/${stepId}/rerun`,{method:'POST',body:JSON.stringify({reason:'Retry failed step from workspace UI'})});
+      await reloadActiveRun();
+      sToast('↻ 已重新触发步骤执行');
+    }catch(e){
+      sToast('重试失败：'+(e?.message||'未知错误'));
+    }
+  };
+  const uploadPrdForStep=async(stepId,file)=>{
+    if(!file.name.toLowerCase().endsWith('.md'))throw new Error('当前只支持上传 .md 文件');
+    const content=await file.text();
+    const art=await apiJson('/api/v1/artifacts',{method:'POST',body:JSON.stringify({role:'PRD',step_id:stepId,title:file.name,content_inline:content})});
+    await apiJson(`/api/v1/artifacts/${art.data.id}/commit`,{method:'POST'});
+    await apiJson(`/api/v1/steps/${stepId}/decision`,{method:'POST',body:JSON.stringify({action:'approve',comment:'PRD uploaded from Import PRD step',edited_artifact_id:art.data.id})});
+    await reloadActiveRun();
+  };
+  const createRun=async()=>{
+    if(!activeWorkspace)return;
+    const j=await apiJson(`/api/v1/workspaces/${activeWorkspace.id}/runs`,{method:'POST',body:JSON.stringify({template_id:'builtin-9step'})});
+    setActiveRun(j.data);
+    await loadRuns(workspaces);
+  };
+  const createWorkspaceFromWizard=async(data)=>{
+    const slugBase=slugifyName(data.name);
+    const body={name:data.name,slug:slugBase,preferredProvider:localStorage.getItem('aww-agent-cli')||'codex',...(data.repoUrl?{githubRepoUrl:data.repoUrl}:{})};
+    let ws;
+    try{
+      const created=await apiJson('/api/v1/workspaces',{method:'POST',body:JSON.stringify(body)});
+      ws=created.data;
+    }catch(e){
+      const created=await apiJson('/api/v1/workspaces',{method:'POST',body:JSON.stringify({...body,slug:`${slugBase}-${Date.now().toString(36).slice(-4)}`})});
+      ws=created.data;
+    }
+    const runCreated=await apiJson(`/api/v1/workspaces/${ws.id}/runs`,{method:'POST',body:JSON.stringify({template_id:'builtin-9step'})});
+    const importStep=(runCreated.data.steps||[]).find(s=>s.position===2)||runCreated.data.steps?.[0];
+    if(importStep&&data.prd){
+      const art=await apiJson('/api/v1/artifacts',{method:'POST',body:JSON.stringify({role:'PRD',step_id:importStep.id,title:`${data.name} PRD`,content_inline:data.prd})});
+      await apiJson(`/api/v1/artifacts/${art.data.id}/commit`,{method:'POST'});
+    }
+    const createStep=(runCreated.data.steps||[]).find(s=>s.position===1);
+    const prdStep=(runCreated.data.steps||[]).find(s=>s.position===2);
+    if(createStep)await apiJson(`/api/v1/steps/${createStep.id}/decision`,{method:'POST',body:JSON.stringify({action:'approve',comment:'Workspace created from onboarding wizard'})});
+    if(prdStep&&data.prd)await apiJson(`/api/v1/steps/${prdStep.id}/decision`,{method:'POST',body:JSON.stringify({action:'approve',comment:'PRD imported from onboarding wizard'})});
+    setSelectedWorkspaceId(ws.id);
+    localStorage.setItem('aww-selected-workspace',ws.id);
+    setScreen('workspace');
+    pushParentPath('/w/'+ws.slug);
+    await loadData();
+    const detail=await apiJson(`/api/v1/runs/${runCreated.data.id}`);
+    setActiveRun(detail.data);
+  };
 
   const t=TH[tweaks.theme]||TH.amber;
   const isEmpty=flowState<=2&&screen==='workspace';
+  const goWorkspaces=()=>{setScreen('workspaces');pushParentPath('/workspaces');};
+  const goProject=()=>{setScreen('workspace');pushParentPath('/w/'+(activeWorkspace?.slug||'workspace'));};
 
   return(
     <TC.Provider value={t}>
       <div style={{width:'100%',height:'100%',display:'flex',background:t.bgg,fontFamily:'DM Sans,sans-serif',color:t.tx,overflow:'hidden'}}>
         <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:0,backgroundImage:`radial-gradient(ellipse at 15% 15%,${t.p}10 0%,transparent 55%),radial-gradient(ellipse at 85% 85%,${t.ag}0a 0%,transparent 55%)`}}/>
         <div style={{position:'relative',zIndex:1,display:'flex',flex:1,overflow:'hidden'}}>
-          {!isEmpty&&<Sidebar screen={screen} setScreen={setScreen}/>}
+          {!isEmpty&&<Sidebar screen={screen} setScreen={setScreen} onLogo={goWorkspaces} onProject={goProject} onLogout={logoutParent} workspace={activeWorkspace} run={activeRun}/>}
           {isEmpty
             ? <EmptyState onStart={()=>sSW(true)}/>
-            : screen==='workspace'
-              ? <WorkspaceView flowState={flowState} setFlowState={setFlowState}/>
-              : screen==='artifacts'?<ArtifactsView/>
-              : screen==='audit'?<AuditView/>
-              : <SettingsView/>
+            : screen==='workspaces'
+              ? <WorkspacesView workspaces={workspaces} runsByWorkspace={runsByWorkspace} loading={loadingData} onOpen={selectWorkspace} onCreate={()=>sSW(true)}/>
+              : screen==='workspace'
+              ? <RealWorkspaceView workspace={activeWorkspace} run={activeRun} artifactContent={artifactContent} artifactMeta={artifactMeta} codeTree={codeTree} codeTreeError={codeTreeError} codeFileContent={codeFileContent} gitInfo={gitInfo} onCreateRun={createRun} onDecision={decideStep} onRerunStep={rerunStep} onUploadPrd={uploadPrdForStep} onReadCodeFile={readCodeFile} repairing={repairingRun} onRequestArtifactEdit={openArtifactEdit}/>
+              : screen==='artifacts'?<ArtifactsView run={activeRun} artifactMeta={artifactMeta} artifactContent={artifactContent}/>
+              : screen==='audit'?<AuditView run={activeRun} auditEvents={auditEvents}/>
+              : <SettingsView workspace={activeWorkspace}/>
           }
         </div>
-        {showWizard&&<Wizard onClose={()=>sSW(false)} onComplete={()=>{setFlowState(3);sSW(false);setScreen('workspace');}}/>}
+        {artifactEdit.open&&(
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={e=>e.target===e.currentTarget&&setArtifactEdit(x=>({...x,open:false}))}>
+            <div style={{background:t.bg,borderRadius:14,width:'min(720px,90vw)',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 8px 40px rgba(0,0,0,0.3)',overflow:'hidden'}}>
+              <div style={{padding:'18px 22px',borderBottom:`1px solid ${t.glb}`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15,color:t.tx}}>{artifactEdit.heading}</div>
+                  <div style={{fontSize:12,color:t.txm,marginTop:3}}>{artifactEdit.description}</div>
+                </div>
+                <button onClick={()=>setArtifactEdit(x=>({...x,open:false}))} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:t.txm,padding:'0 4px'}}>✕</button>
+              </div>
+              <div style={{flex:1,overflow:'hidden',position:'relative',minHeight:200}}>
+                {artifactEdit.loading
+                  ?<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:t.txm,fontSize:13}}>加载内容…</div>
+                  :<textarea
+                    style={{width:'100%',height:'100%',minHeight:300,resize:'none',border:'none',outline:'none',padding:'16px 20px',fontFamily:'JetBrains Mono,monospace',fontSize:13,lineHeight:1.7,background:t.bg,color:t.tx,boxSizing:'border-box'}}
+                    value={artifactEdit.content}
+                    onChange={e=>setArtifactEdit(x=>({...x,content:e.target.value}))}
+                    placeholder={`在此输入 ${artifactEdit.role} 内容…`}
+                    spellCheck={false}
+                    autoFocus
+                  />
+                }
+              </div>
+              <div style={{padding:'14px 22px',borderTop:`1px solid ${t.glb}`,display:'flex',gap:10,justifyContent:'flex-end'}}>
+                <Btn onClick={()=>setArtifactEdit(x=>({...x,open:false}))} disabled={artifactEdit.submitting}>取消</Btn>
+                <Btn variant="primary" onClick={submitArtifactEdit} disabled={artifactEdit.loading||artifactEdit.submitting||!artifactEdit.content.trim()}>
+                  {artifactEdit.submitting?'提交中…':'提交修订并重新执行'}
+                </Btn>
+              </div>
+            </div>
+          </div>
+        )}
+        {toast&&<Toast msg={toast} onDone={()=>sToast(null)}/>}
+        {showWizard&&<Wizard onClose={()=>sSW(false)} onComplete={async(data)=>{await createWorkspaceFromWizard(data);setFlowState(3);sSW(false);}}/>}
         <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} vis={twVis}/>
       </div>
     </TC.Provider>
