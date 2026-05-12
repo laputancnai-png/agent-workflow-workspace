@@ -47,7 +47,7 @@ function runCommand(command: string, args: string[], cwd: string, timeoutMs = 18
   });
 }
 
-function argsFor(provider: string, prompt: string, codeDir: string, model?: string) {
+function argsFor(provider: string, prompt: string, codeDir: string) {
   switch (provider) {
     case 'codex':
       return { command: 'codex', args: ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--color', 'never', '--cd', codeDir, prompt] };
@@ -56,11 +56,8 @@ function argsFor(provider: string, prompt: string, codeDir: string, model?: stri
       return { command: 'claude', args: ['--print', prompt, '--output-format', 'text', '--permission-mode', 'acceptEdits', '--add-dir', codeDir] };
     case 'openclaw':
       return { command: 'openclaw', args: ['agent', '--local', '--agent', 'main', '--message', prompt, '--timeout', '120'] };
-    case 'hermes': {
-      const hermesArgs = ['chat', '-Q', '-q', prompt];
-      if (model) hermesArgs.push('-m', model);
-      return { command: 'hermes', args: hermesArgs };
-    }
+    case 'hermes':
+      return { command: 'hermes', args: ['chat', '-Q', '-q', prompt] };
     default:
       return { command: 'codex', args: ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--color', 'never', '--cd', codeDir, prompt] };
   }
@@ -195,7 +192,7 @@ export async function executeCliAgentRun(agentRunId: string): Promise<void> {
     },
     updatedAt: new Date(),
   }).where(eq(agentRuns.id, agentRun.id));
-  const { command, args } = argsFor(provider, prompt, codeDir, provider === 'hermes' ? workspace.preferredModel : undefined);
+  const { command, args } = argsFor(provider, prompt, codeDir);
   const result = await runCommand(command, args, codeDir);
 
   // Some CLIs (e.g. hermes) exit 0 even when they hit an API error; detect this.
