@@ -6,6 +6,7 @@ import { db } from '../db/index.js';
 import { runners } from '../db/schema/runners.js';
 import { workspaceMembers, workspaces } from '../db/schema/workspaces.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
+import { ensureWorkspaceFolders } from '../services/workspace-files.js';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1).max(128),
@@ -52,6 +53,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       userId,
       role: 'owner',
     });
+    await ensureWorkspaceFolders(workspace);
 
     return reply.code(201).send({ data: workspace });
   });

@@ -95,7 +95,7 @@ export const stepRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'step_not_found' });
     }
 
-    if (!['running', 'failed', 'timed_out', 'cancelled', 'retrying'].includes(loaded.step.status)) {
+    if (!['pending', 'running', 'failed', 'timed_out', 'cancelled', 'retrying'].includes(loaded.step.status)) {
       return reply.code(409).send({ error: 'step_not_retryable', status: loaded.step.status });
     }
 

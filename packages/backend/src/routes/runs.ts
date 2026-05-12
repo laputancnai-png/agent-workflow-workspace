@@ -8,6 +8,7 @@ import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
 import { BUILTIN_9STEP_TEMPLATE } from '../lib/templates.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
+import { scheduleNextStep } from '../services/scheduler.js';
 
 const createRunSchema = z.object({
   template_id: z.literal(BUILTIN_9STEP_TEMPLATE.id),
@@ -37,6 +38,19 @@ function serializeRun(run: typeof workflowRuns.$inferSelect) {
 
 export const runRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireUser);
+
+  app.get('/:workspaceId/runs', async (request, reply) => {
+    const { workspaceId } = request.params as { workspaceId: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    const runs = await db.select().from(workflowRuns).where(eq(workflowRuns.workspaceId, workspaceId));
+    return { data: runs.map(serializeRun) };
+  });
 
   app.post('/:workspaceId/runs', async (request, reply) => {
     const { workspaceId } = request.params as { workspaceId: string };
@@ -83,10 +97,13 @@ export const runRoutes: FastifyPluginAsync = async (app) => {
       )
       .returning();
 
+    await scheduleNextStep(run.id, 0);
+
+    const updatedSteps = await db.select().from(workflowSteps).where(eq(workflowSteps.runId, run.id));
     return reply.code(201).send({
       data: {
         ...serializeRun(run),
-        steps: steps.map((s) => serializeStep(s, [])),
+        steps: updatedSteps.map((s) => serializeStep(s, [])),
       },
     });
   });

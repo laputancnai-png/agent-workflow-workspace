@@ -51,6 +51,7 @@ function argsFor(provider: string, prompt: string, codeDir: string) {
   switch (provider) {
     case 'codex':
       return { command: 'codex', args: ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--color', 'never', '--cd', codeDir, prompt] };
+    case 'anthropic':
     case 'claude':
       return { command: 'claude', args: ['--print', prompt, '--output-format', 'text', '--permission-mode', 'acceptEdits', '--add-dir', codeDir] };
     case 'openclaw':

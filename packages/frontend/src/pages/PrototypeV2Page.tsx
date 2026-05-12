@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import prototypeHtml from '../../../../docs/AWW Prototype_v2.html?raw';
+import prototypeHtml from '../prototype-v2.html?raw';
 
 export function PrototypeV2Page() {
   const location = useLocation();
