@@ -95,7 +95,7 @@ export const stepRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'step_not_found' });
     }
 
-    if (!['failed', 'timed_out', 'cancelled', 'retrying'].includes(loaded.step.status)) {
+    if (!['running', 'failed', 'timed_out', 'cancelled', 'retrying'].includes(loaded.step.status)) {
       return reply.code(409).send({ error: 'step_not_retryable', status: loaded.step.status });
     }
 
@@ -125,7 +125,7 @@ export const stepRoutes: FastifyPluginAsync = async (app) => {
     await publishEvent('step.status_changed', { stepId, status: 'retrying', run_id: loaded.run.id }, loaded.run.workspaceId);
     await requeueStep(stepId);
 
-    return { data: { step_id: stepId, step_status: 'running' } };
+    return { data: { step_id: stepId, step_status: 'retrying' } };
   });
 
   app.post('/steps/:stepId/take-over', async (request, reply) => {
