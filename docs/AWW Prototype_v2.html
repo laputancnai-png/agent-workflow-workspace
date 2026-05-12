@@ -1494,7 +1494,7 @@ function SettingsView({workspace}){
   };
   const api=(path,opts={})=>{
     const tk=token();
-    return fetch(path,{...opts,headers:{Accept:'application/json',...(opts.body?{'Content-Type':'application/json'}:{}),...(tk?{Authorization:`Bearer ${tk}`}:{})}}).then(r=>r.json());
+    return fetch(path,{...opts,headers:{Accept:'application/json',...(opts.body?{'Content-Type':'application/json'}:{}),...(tk?{Authorization:`Bearer ${tk}`}:{})}}).then(r=>{if(!r.ok)throw new Error(`${r.status} ${path}`);return r.json();});
   };
   const refresh=()=>api('/api/v1/agent-cli/status').then(j=>setStatus(Object.fromEntries((j.data||[]).map(s=>[s.id,s])))).catch(()=>setStatus({}));
   useEffect(()=>{refresh();},[]);

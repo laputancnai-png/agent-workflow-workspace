@@ -5,6 +5,8 @@ import { PrototypeV2Page } from '../pages/PrototypeV2Page.js';
 
 export const router = createBrowserRouter([
   { path: '/', element: <PrototypeV2Page /> },
+  { path: '/workspaces', element: <PrototypeV2Page /> },
+  { path: '/w/*', element: <PrototypeV2Page /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/oauth/callback', element: <OAuthCallbackPage /> },
   { path: '*', loader: () => redirect('/') },
