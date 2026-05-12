@@ -28,6 +28,7 @@ const updateWorkspaceSchema = z.object({
   githubRepoUrl: z.string().url().nullable().optional(),
   defaultBranch: z.string().min(1).max(128).optional(),
   preferredProvider: z.string().min(1).max(32).optional(),
+  preferredModel: z.string().max(128).optional(),
 });
 
 export const workspaceRoutes: FastifyPluginAsync = async (app) => {
@@ -105,6 +106,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
         ...(parsed.data.githubRepoUrl !== undefined && { githubRepoUrl: parsed.data.githubRepoUrl }),
         ...(parsed.data.defaultBranch !== undefined && { defaultBranch: parsed.data.defaultBranch }),
         ...(parsed.data.preferredProvider !== undefined && { preferredProvider: parsed.data.preferredProvider }),
+        ...(parsed.data.preferredModel !== undefined && { preferredModel: parsed.data.preferredModel }),
       })
       .where(eq(workspaces.id, id))
       .returning();
