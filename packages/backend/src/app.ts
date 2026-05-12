@@ -6,11 +6,13 @@ import Fastify from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 
 import { agentCliRoutes } from './routes/agent-cli.js';
+import { agentRunRoutes } from './routes/agent-runs.js';
 import { artifactRoutes } from './routes/artifacts.js';
 import { authRoutes } from './routes/auth.js';
 import { decisionRoutes } from './routes/decisions.js';
 import { eventRoutes } from './routes/events.js';
 import { runDetailRoutes, runRoutes } from './routes/runs.js';
+import { runnerRoutes } from './routes/runners.js';
 import { stepRoutes } from './routes/steps.js';
 import { workspaceRoutes } from './routes/workspaces.js';
 
@@ -31,12 +33,14 @@ export async function buildApp() {
   app.get('/health', async () => ({ status: 'ok' }));
 
   await app.register(agentCliRoutes, { prefix: '/api/v1/agent-cli' });
+  await app.register(agentRunRoutes, { prefix: '/api/v1' });
   await app.register(artifactRoutes, { prefix: '/api/v1/artifacts' });
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(decisionRoutes, { prefix: '/api/v1' });
   await app.register(eventRoutes, { prefix: '/api/v1/workspaces' });
   await app.register(runRoutes, { prefix: '/api/v1/workspaces' });
   await app.register(runDetailRoutes, { prefix: '/api/v1' });
+  await app.register(runnerRoutes, { prefix: '/api/v1/runners' });
   await app.register(stepRoutes, { prefix: '/api/v1' });
   await app.register(workspaceRoutes, { prefix: '/api/v1/workspaces' });
 
