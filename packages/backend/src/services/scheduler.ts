@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { agentRuns } from '../db/schema/runners.js';
@@ -69,8 +69,20 @@ export async function requeueStep(stepId: string): Promise<void> {
 }
 
 export async function failRun(runId: string, workspaceId: string): Promise<void> {
+  const runningSteps = await db
+    .select()
+    .from(workflowSteps)
+    .where(and(eq(workflowSteps.runId, runId), eq(workflowSteps.status, 'running')));
+
+  for (const step of runningSteps) {
+    await db.update(workflowSteps)
+      .set({ status: 'failed', updatedAt: new Date() })
+      .where(eq(workflowSteps.id, step.id));
+    await publishEvent('step.status_changed', { stepId: step.id, status: 'failed', run_id: runId }, workspaceId);
+  }
+
   await db.update(workflowRuns)
     .set({ status: 'failed', updatedAt: new Date() })
     .where(eq(workflowRuns.id, runId));
-  await publishEvent('step.status_changed', { run_id: runId, status: 'failed' }, workspaceId);
+  await publishEvent('run.status_changed', { run_id: runId, status: 'failed' }, workspaceId);
 }

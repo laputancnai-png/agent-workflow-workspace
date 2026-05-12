@@ -6,7 +6,12 @@ import { db } from '../db/index.js';
 import { runners } from '../db/schema/runners.js';
 import { workspaceMembers, workspaces } from '../db/schema/workspaces.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
-import { ensureWorkspaceFolders } from '../services/workspace-files.js';
+import { ensureWorkspaceFolders, workspaceRoot } from '../services/workspace-files.js';
+
+type Workspace = typeof workspaces.$inferSelect;
+function serializeWorkspace(w: Workspace) {
+  return { ...w, storagePath: workspaceRoot(w) };
+}
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1).max(128),
@@ -36,7 +41,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
       .where(eq(workspaceMembers.userId, userId));
 
-    return { data: rows.map((row) => row.workspace) };
+    return { data: rows.map((row) => serializeWorkspace(row.workspace)) };
   });
 
   app.post('/', async (request, reply) => {
@@ -55,7 +60,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
     });
     await ensureWorkspaceFolders(workspace);
 
-    return reply.code(201).send({ data: workspace });
+    return reply.code(201).send({ data: serializeWorkspace(workspace) });
   });
 
   app.get('/:id', async (request, reply) => {
@@ -73,7 +78,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       where: eq(workspaces.id, id),
     });
 
-    return { data: workspace };
+    return { data: workspace ? serializeWorkspace(workspace) : workspace };
   });
 
   app.patch('/:id', async (request, reply) => {
@@ -108,7 +113,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'not_found' });
     }
 
-    return { data: updated };
+    return { data: serializeWorkspace(updated) };
   });
 
   app.delete('/:id', async (request, reply) => {

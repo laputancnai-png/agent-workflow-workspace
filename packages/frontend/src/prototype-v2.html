@@ -1475,7 +1475,7 @@ function AuditView({run,auditEvents=[]}){
     </div>
   );
 }
-function SettingsView({workspace}){
+function SettingsView({workspace,onProviderSaved}){
   const t=useT();
   const agents=[
     {id:'hermes',name:'Hermes',desc:'本地 Hermes Agent CLI',tone:t.p},
@@ -1507,6 +1507,7 @@ function SettingsView({workspace}){
     try{
       if(workspace?.id)await api(`/api/v1/workspaces/${workspace.id}`,{method:'PATCH',body:JSON.stringify({preferredProvider:sel})});
       setSaveMsg('已保存');
+      onProviderSaved?.(sel);
     }catch{setSaveMsg('已保存到本地');}
     setSaving(false);
   };
@@ -1843,7 +1844,7 @@ function App(){
   };
   const createWorkspaceFromWizard=async(data)=>{
     const slugBase=slugifyName(data.name);
-    const body={name:data.name,slug:slugBase,preferredProvider:localStorage.getItem('aww-agent-cli')||'codex',...(data.repoUrl?{githubRepoUrl:data.repoUrl}:{})};
+    const body={name:data.name,slug:slugBase,preferredProvider:localStorage.getItem('aww-agent-cli')||'claude',...(data.repoUrl?{githubRepoUrl:data.repoUrl}:{})};
     let ws;
     try{
       const created=await apiJson('/api/v1/workspaces',{method:'POST',body:JSON.stringify(body)});
@@ -1890,7 +1891,7 @@ function App(){
               ? <RealWorkspaceView workspace={activeWorkspace} run={activeRun} artifactContent={artifactContent} artifactMeta={artifactMeta} codeTree={codeTree} codeTreeError={codeTreeError} codeFileContent={codeFileContent} gitInfo={gitInfo} onCreateRun={createRun} onDecision={decideStep} onRerunStep={rerunStep} onUploadPrd={uploadPrdForStep} onReadCodeFile={readCodeFile} repairing={repairingRun} onRequestArtifactEdit={openArtifactEdit}/>
               : screen==='artifacts'?<ArtifactsView run={activeRun} artifactMeta={artifactMeta} artifactContent={artifactContent}/>
               : screen==='audit'?<AuditView run={activeRun} auditEvents={auditEvents}/>
-              : <SettingsView workspace={activeWorkspace}/>
+              : <SettingsView workspace={activeWorkspace} onProviderSaved={(p)=>setWorkspaces(prev=>prev.map(w=>w.id===activeWorkspace?.id?{...w,preferredProvider:p}:w))}/>
           }
         </div>
         {artifactEdit.open&&(
