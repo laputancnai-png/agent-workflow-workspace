@@ -4,6 +4,8 @@ import { z } from 'zod';
 
 import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
+import { decisions } from '../db/schema/decisions.js';
+import { agentRuns } from '../db/schema/runners.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
 import { BUILTIN_9STEP_TEMPLATE } from '../lib/templates.js';
@@ -159,5 +161,35 @@ export const runDetailRoutes: FastifyPluginAsync = async (app) => {
         steps: steps.map((s) => serializeStep(s, artifactsByStep.get(s.id) ?? [])),
       },
     };
+  });
+
+  app.get('/runs/:runId/audit', async (request, reply) => {
+    const { runId } = request.params as { runId: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
+    const run = await db.query.workflowRuns.findFirst({ where: eq(workflowRuns.id, runId) });
+    if (!run) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, run.workspaceId), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    const steps = await db.select().from(workflowSteps).where(eq(workflowSteps.runId, runId));
+    const stepIds = steps.map((s) => s.id);
+
+    const [stepDecisions, stepAgentRuns] = await Promise.all([
+      stepIds.length > 0 ? db.select().from(decisions).where(inArray(decisions.stepId, stepIds)) : [],
+      stepIds.length > 0 ? db.select().from(agentRuns).where(inArray(agentRuns.stepId, stepIds)) : [],
+    ]);
+
+    const events = [
+      { time: run.createdAt.toISOString(), type: 'run.created', message: `WorkflowRun ${run.id} created` },
+      ...steps.map((s) => ({ time: s.updatedAt.toISOString(), type: `step.${s.status}`, message: `Step ${s.position}: ${s.name} — ${s.status}` })),
+      ...stepDecisions.map((d) => ({ time: d.createdAt.toISOString(), type: `decision.${d.action}`, message: `Decision: ${d.action}${d.comment ? ` — ${d.comment}` : ''}` })),
+      ...stepAgentRuns.map((ar) => ({ time: ar.updatedAt.toISOString(), type: `agent_run.${ar.status}`, message: `Agent run (${ar.agentRole}) — ${ar.status}` })),
+    ].sort((a, b) => a.time.localeCompare(b.time));
+
+    return { data: events };
   });
 };

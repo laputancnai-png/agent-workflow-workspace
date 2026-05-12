@@ -6,7 +6,7 @@ import { db } from '../db/index.js';
 import { runners } from '../db/schema/runners.js';
 import { workspaceMembers, workspaces } from '../db/schema/workspaces.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
-import { ensureWorkspaceFolders, workspaceRoot } from '../services/workspace-files.js';
+import { ensureWorkspaceFolders, getWorkspaceGitInfo, listWorkspaceFiles, readWorkspaceFile, workspaceRoot } from '../services/workspace-files.js';
 
 type Workspace = typeof workspaces.$inferSelect;
 function serializeWorkspace(w: Workspace) {
@@ -151,5 +151,77 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
 
     const rows = await db.select().from(runners).where(eq(runners.workspaceId, workspace.id));
     return { data: rows };
+  });
+
+  app.get('/:id/git', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    try {
+      const info = await getWorkspaceGitInfo(workspace);
+      return { data: info };
+    } catch {
+      return { data: null };
+    }
+  });
+
+  app.get('/:id/files', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+    const { area = 'code' } = request.query as { area?: string };
+
+    if (area !== 'code' && area !== 'docs') {
+      return reply.code(400).send({ error: 'invalid_area' });
+    }
+
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    const files = await listWorkspaceFiles(workspace, area);
+    return { data: files };
+  });
+
+  app.get('/:id/files/content', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as AuthenticatedRequest).userId;
+    const { area = 'code', path } = request.query as { area?: string; path?: string };
+
+    if (!path) return reply.code(400).send({ error: 'missing_path' });
+    if (area !== 'code' && area !== 'docs') return reply.code(400).send({ error: 'invalid_area' });
+
+    const workspace = await db.query.workspaces.findFirst({
+      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
+    });
+    if (!workspace) return reply.code(404).send({ error: 'not_found' });
+
+    const member = await db.query.workspaceMembers.findFirst({
+      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
+    });
+    if (!member) return reply.code(403).send({ error: 'forbidden' });
+
+    try {
+      const content = await readWorkspaceFile(workspace, area, path);
+      return { data: { path, content } };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'read_failed';
+      return reply.code(msg === 'invalid_path' ? 400 : 404).send({ error: msg });
+    }
   });
 };

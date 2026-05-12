@@ -194,16 +194,17 @@ export async function executeCliAgentRun(agentRunId: string): Promise<void> {
   }).where(eq(agentRuns.id, agentRun.id));
   const { command, args } = argsFor(provider, prompt, codeDir);
   const result = await runCommand(command, args, codeDir);
-  let stepOk = result.ok;
 
+  // Some CLIs (e.g. hermes) exit 0 even when they hit an API error; detect this.
+  const hasCliError = /api call failed|rate limit|final error:|authentication failed|unauthorized/i.test(result.output);
+  let stepOk = result.ok && !hasCliError;
+
+  // contentInline stores only the agent's substantive output, not execution metadata.
+  // Metadata (provider, command, exit code) goes into outputPayloadRef on the agentRun.
   let content = [
     `# ${roleArtifact[agentRun.agentRole]?.title ?? agentRun.agentRole}`,
     '',
-    `Provider: ${provider}`,
-    `Command: ${command}`,
-    `Exit code: ${result.exitCode ?? 'n/a'}`,
-    '',
-    result.output || '(no output)',
+    stepOk ? (result.output || '(no output)') : `## 执行失败\n\nProvider: ${provider}, Exit code: ${result.exitCode ?? 'n/a'}\n\n${result.output || '(no output)'}`,
   ].join('\n');
 
   if (agentRun.agentRole === 'coder') {
