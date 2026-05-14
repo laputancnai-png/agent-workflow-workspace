@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { agentRuns } from '../db/schema/runners.js';
+import { agentRuns } from '../db/schema/agent-runs.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { publishEvent } from '../lib/sse.js';
 import { executeCliAgentRun } from './cli-agent-executor.js';

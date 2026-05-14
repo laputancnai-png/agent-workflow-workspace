@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { artifacts } from '../../src/db/schema/artifacts.js';
 import { auditEvents } from '../../src/db/schema/audit.js';
 import { decisions } from '../../src/db/schema/decisions.js';
-import { agentRuns, runners } from '../../src/db/schema/runners.js';
+import { agentRuns } from '../../src/db/schema/agent-runs.js';
 import { users } from '../../src/db/schema/users.js';
 import { workflowSteps } from '../../src/db/schema/workflows.js';
 import { workspaces } from '../../src/db/schema/workspaces.js';
@@ -33,8 +33,7 @@ describe('Schema shapes', () => {
     expect(decisions.action).toBeDefined();
   });
 
-  it('runners and agentRuns tables have status columns', () => {
-    expect(runners.status).toBeDefined();
+  it('agentRuns table has status column', () => {
     expect(agentRuns.status).toBeDefined();
   });
 

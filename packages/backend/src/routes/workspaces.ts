@@ -3,7 +3,6 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import { db } from '../db/index.js';
-import { runners } from '../db/schema/runners.js';
 import { workspaceMembers, workspaces } from '../db/schema/workspaces.js';
 import { type AuthenticatedRequest, requireUser } from '../middleware/user-auth.js';
 import { ensureWorkspaceFolders, getWorkspaceGitInfo, listWorkspaceFiles, readWorkspaceFile, workspaceRoot } from '../services/workspace-files.js';
@@ -131,28 +130,6 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
 
     await db.delete(workspaces).where(eq(workspaces.id, id));
     return reply.code(204).send();
-  });
-
-  app.get('/:id/runners', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const userId = (request as AuthenticatedRequest).userId;
-
-    const workspace = await db.query.workspaces.findFirst({
-      where: or(eq(workspaces.id, id), eq(workspaces.slug, id)),
-    });
-    if (!workspace) {
-      return reply.code(404).send({ error: 'not_found' });
-    }
-
-    const member = await db.query.workspaceMembers.findFirst({
-      where: and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId)),
-    });
-    if (!member) {
-      return reply.code(403).send({ error: 'forbidden' });
-    }
-
-    const rows = await db.select().from(runners).where(eq(runners.workspaceId, workspace.id));
-    return { data: rows };
   });
 
   app.get('/:id/git', async (request, reply) => {

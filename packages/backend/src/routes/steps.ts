@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
 import { decisions } from '../db/schema/decisions.js';
-import { agentRuns } from '../db/schema/runners.js';
+import { agentRuns } from '../db/schema/agent-runs.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaceMembers } from '../db/schema/workspaces.js';
 import { publishEvent } from '../lib/sse.js';

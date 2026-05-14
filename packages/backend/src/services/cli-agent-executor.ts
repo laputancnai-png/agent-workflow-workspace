@@ -3,7 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { artifacts } from '../db/schema/artifacts.js';
-import { agentRuns } from '../db/schema/runners.js';
+import { agentRuns } from '../db/schema/agent-runs.js';
 import { workflowRuns, workflowSteps } from '../db/schema/workflows.js';
 import { workspaces } from '../db/schema/workspaces.js';
 import { publishEvent } from '../lib/sse.js';

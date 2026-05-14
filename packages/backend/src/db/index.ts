@@ -6,7 +6,7 @@ import postgres from 'postgres';
 import * as artifactsSchema from './schema/artifacts.js';
 import * as auditSchema from './schema/audit.js';
 import * as decisionsSchema from './schema/decisions.js';
-import * as runnersSchema from './schema/runners.js';
+import * as agentRunsSchema from './schema/agent-runs.js';
 import * as usersSchema from './schema/users.js';
 import * as workflowsSchema from './schema/workflows.js';
 import * as workspacesSchema from './schema/workspaces.js';
@@ -24,7 +24,7 @@ export const db = drizzle(client, {
     ...artifactsSchema,
     ...auditSchema,
     ...decisionsSchema,
-    ...runnersSchema,
+    ...agentRunsSchema,
     ...usersSchema,
     ...workflowsSchema,
     ...workspacesSchema,
